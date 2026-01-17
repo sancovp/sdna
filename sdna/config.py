@@ -8,7 +8,7 @@ adding goal templating, brain integration, and chain/dovetail support.
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Union, Callable
 from pathlib import Path
-from pydantic import Field, BaseModel
+from pydantic import Field, BaseModel, ConfigDict
 
 # Import SDK types
 try:
@@ -97,8 +97,7 @@ class HermesConfig(BaseModel):
     output_format: Optional[Dict[str, Any]] = None
     enable_file_checkpointing: bool = False
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # === HERMES METHODS ===
 
@@ -188,8 +187,7 @@ class HermesConfigInput(BaseModel):
     required: bool = True
     default: Any = None
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def extract(self, data: Dict[str, Any]) -> Any:
         """Extract value from data using source_key path."""
@@ -227,8 +225,7 @@ class DovetailModel(BaseModel):
     expected_outputs: List[str] = Field(default_factory=list)
     input_map: Dict[str, HermesConfigInput] = Field(default_factory=dict)
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def validate_outputs(self, result: Dict[str, Any]) -> List[str]:
         """Check expected outputs are present. Returns missing keys."""

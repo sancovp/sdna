@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "sdna"
-version = "0.1.0"
+name = "sanctuary-dna"
+version = "0.1.1"
 description = "Sanctuary DNA - Gnostic agent workflow DSL. Ariadne (threading) + Poimandres (generation) = SDNA spiral"
 readme = "README.md"
 license = {text = "MIT"}
