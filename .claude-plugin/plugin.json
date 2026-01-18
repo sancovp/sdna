@@ -1,0 +1,9 @@
+{
+  "name": "sdna",
+  "description": "SDNA (Sanctuary DNA) - Gnostic agent workflow DSL with skills for chain development",
+  "version": "0.3.1",
+  "author": {
+    "name": "Isaac Wostrel-Rubin",
+    "email": "isaac@sanctuary.systems"
+  }
+}
