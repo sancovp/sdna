@@ -1,0 +1,69 @@
+{
+  "name": "starlog_context",
+  "metadata": {
+    "project_name": "SDNA Development",
+    "project_description": "Sanctuary DNA - Gnostic agent workflow DSL with LangGraph substrate. Building DUO, Sophia, and compound intelligence infrastructure."
+  },
+  "blocks": [
+    {
+      "type": "freestyle",
+      "content": "<STARLOG>"
+    },
+    {
+      "type": "freestyle",
+      "content": "<CaptainsLog>"
+    },
+    {
+      "type": "freestyle",
+      "content": "<ProjectMetadata>"
+    },
+    {
+      "type": "freestyle",
+      "content": "Project Name: SDNA Development"
+    },
+    {
+      "type": "freestyle",
+      "content": "Description: Sanctuary DNA - Gnostic agent workflow DSL with LangGraph substrate. Building DUO, Sophia, and compound intelligence infrastructure."
+    },
+    {
+      "type": "freestyle",
+      "content": "Mode: standalone"
+    },
+    {
+      "type": "freestyle",
+      "content": "</ProjectMetadata>"
+    },
+    {
+      "type": "freestyle",
+      "content": "<ModeInstructions>"
+    },
+    {
+      "type": "freestyle",
+      "content": "*No GIINT project linked - operating in standalone STARLOG mode*"
+    },
+    {
+      "type": "freestyle",
+      "content": "</ModeInstructions>"
+    },
+    {
+      "type": "freestyle",
+      "content": "<Started>{session_start_content}</Started>"
+    },
+    {
+      "type": "freestyle",
+      "content": "<DebugDiaries>{debug_logs_content}</DebugDiaries>"
+    },
+    {
+      "type": "freestyle",
+      "content": "<Ended>{session_end_content}</Ended>"
+    },
+    {
+      "type": "freestyle",
+      "content": "</CaptainsLog>"
+    },
+    {
+      "type": "freestyle",
+      "content": "</STARLOG>"
+    }
+  ]
+}

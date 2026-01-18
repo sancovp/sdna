@@ -30,6 +30,7 @@ from .sdna import (
     SDNACConfig, OptimizerSDNACConfig, SDNAFlowConfig,
     sdnac, sdna_flow,
 )
+from .duo import DUOAgent, DUOResult, DUOStatus, duo_agent
 from . import poimandres
 
 __all__ = [
@@ -84,4 +85,9 @@ __all__ = [
     "SDNAFlowConfig",
     "sdnac",
     "sdna_flow",
+    # DUO (refinement loop)
+    "DUOAgent",
+    "DUOResult",
+    "DUOStatus",
+    "duo_agent",
 ]

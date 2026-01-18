@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sanctuary-dna"
-version = "0.2.0"
+version = "0.3.1"
 description = "Sanctuary DNA - Gnostic agent workflow DSL. Ariadne (threading) + Poimandres (generation) = SDNA spiral"
 readme = "README.md"
 license = {text = "MIT"}
