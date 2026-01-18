@@ -1,0 +1,32 @@
+{
+  "name": "twi-marketplace",
+  "owner": {
+    "name": "TWI",
+    "email": "isaac@sanctuary.systems"
+  },
+  "metadata": {
+    "description": "TWI Community Plugins - GNOSYS compound intelligence ecosystem",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "sdna",
+      "source": "./",
+      "description": "SDNA Plugin - Gnostic agent workflow DSL with skills for chain development",
+      "version": "0.3.2",
+      "author": {
+        "name": "Isaac Wostrel-Rubin",
+        "email": "isaac@sanctuary.systems"
+      },
+      "license": "GPBL-1.0",
+      "keywords": [
+        "ai-agent",
+        "sdna",
+        "workflow",
+        "duo-agent",
+        "chain-development"
+      ],
+      "category": "productivity"
+    }
+  ]
+}
