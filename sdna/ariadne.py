@@ -3,16 +3,27 @@ Ariadne - The Threader
 
 Context manipulation: inject, weave, dovetail, human input.
 Ariadne prepares the thread that guides Poimandres.
+
+LangGraph is the native execution substrate. Each element has to_langgraph_node(),
+and AriadneChain has to_graph() which compiles to a LangGraph.
 """
 
-from typing import Dict, Any, List, Union, Optional
+from typing import Dict, Any, List, Union, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
-from pydantic import BaseModel, Field
+from functools import partial
+from pydantic import BaseModel, Field, ConfigDict
 import importlib
 import os
 
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.graph import CompiledGraph
+
 from .config import DovetailModel
+from .state import SDNAState
+
+if TYPE_CHECKING:
+    from .state import SDNAState
 
 
 # =============================================================================
@@ -24,6 +35,18 @@ class HumanInput(BaseModel):
     prompt: str
     input_key: str
     choices: Optional[List[str]] = None
+
+    def to_langgraph_node(self) -> Callable[[SDNAState], Dict[str, Any]]:
+        """Convert to LangGraph node that sets awaiting_input state."""
+        async def node(state: SDNAState) -> Dict[str, Any]:
+            return {
+                "status": "awaiting_input",
+                "awaiting_input": True,
+                "pending_prompt": self.prompt,
+                "pending_input_key": self.input_key,
+                "pending_choices": self.choices,
+            }
+        return node
 
 
 class InjectConfig(BaseModel):
@@ -56,6 +79,14 @@ class InjectConfig(BaseModel):
             context[self.inject_as] = os.environ.get(self.env_var, self.default)
         return context
 
+    def to_langgraph_node(self) -> Callable[[SDNAState], Dict[str, Any]]:
+        """Convert to LangGraph node that injects into context."""
+        async def node(state: SDNAState) -> Dict[str, Any]:
+            ctx = dict(state.get("context", {}))
+            ctx = await self.execute(ctx)
+            return {"context": ctx}
+        return node
+
 
 class WeaveConfig(BaseModel):
     """Context surgery - move message ranges between sessions."""
@@ -73,6 +104,14 @@ class WeaveConfig(BaseModel):
             "_pending": True,
         }
         return context
+
+    def to_langgraph_node(self) -> Callable[[SDNAState], Dict[str, Any]]:
+        """Convert to LangGraph node that weaves context."""
+        async def node(state: SDNAState) -> Dict[str, Any]:
+            ctx = dict(state.get("context", {}))
+            ctx = await self.execute(ctx)
+            return {"context": ctx}
+        return node
 
 
 AriadneElement = Union[HumanInput, InjectConfig, WeaveConfig, DovetailModel, "BrainInjectConfig"]
@@ -156,6 +195,70 @@ class AriadneChain:
 
     def __repr__(self):
         return f"AriadneChain('{self.name}', {len(self.elements)} elements)"
+
+    def to_graph(self) -> CompiledGraph:
+        """
+        Build LangGraph from this chain's elements.
+
+        Each element becomes a node. HumanInput nodes trigger interrupt.
+        Returns a compiled graph that can be invoked or composed.
+        """
+        graph = StateGraph(SDNAState)
+
+        # Add nodes for each element
+        node_names = []
+        for i, elem in enumerate(self.elements):
+            node_name = f"{self.name}_step_{i}"
+            node_names.append(node_name)
+
+            if hasattr(elem, 'to_langgraph_node'):
+                graph.add_node(node_name, elem.to_langgraph_node())
+            elif isinstance(elem, DovetailModel):
+                # Dovetail transforms outputs to inputs
+                async def dovetail_node(state: SDNAState, dv=elem) -> Dict[str, Any]:
+                    ctx = dict(state.get("context", {}))
+                    next_inputs = dv.prepare_next_inputs(ctx)
+                    ctx.update(next_inputs)
+                    return {"context": ctx}
+                graph.add_node(node_name, dovetail_node)
+
+        # Wire edges: START → step_0 → step_1 → ... → END
+        if node_names:
+            graph.add_edge(START, node_names[0])
+            for i in range(len(node_names) - 1):
+                # Check if current node is HumanInput - need conditional edge
+                if isinstance(self.elements[i], HumanInput):
+                    # After human input node, check if awaiting
+                    def check_human(state: SDNAState) -> str:
+                        return "wait" if state.get("awaiting_input") else "continue"
+                    graph.add_conditional_edges(
+                        node_names[i],
+                        check_human,
+                        {"wait": END, "continue": node_names[i + 1]}
+                    )
+                else:
+                    graph.add_edge(node_names[i], node_names[i + 1])
+
+            # Last node to END (unless it's HumanInput, handled above)
+            if not isinstance(self.elements[-1], HumanInput):
+                graph.add_edge(node_names[-1], END)
+            else:
+                def check_human_final(state: SDNAState) -> str:
+                    return "wait" if state.get("awaiting_input") else "done"
+                graph.add_conditional_edges(
+                    node_names[-1],
+                    check_human_final,
+                    {"wait": END, "done": END}
+                )
+        else:
+            # Empty chain - just pass through
+            async def passthrough(state: SDNAState) -> Dict[str, Any]:
+                return {"status": "success"}
+            graph.add_node("passthrough", passthrough)
+            graph.add_edge(START, "passthrough")
+            graph.add_edge("passthrough", END)
+
+        return graph.compile()
 
 
 # =============================================================================
@@ -303,6 +406,14 @@ class BrainInjectConfig(BaseModel):
             for n in result.relevant_neurons
         ]
         return context
+
+    def to_langgraph_node(self) -> Callable[[SDNAState], Dict[str, Any]]:
+        """Convert to LangGraph node that injects brain knowledge."""
+        async def node(state: SDNAState) -> Dict[str, Any]:
+            ctx = dict(state.get("context", {}))
+            ctx = await self.execute(ctx)
+            return {"context": ctx}
+        return node
 
 
 def inject_brain(directory: str, query_key: str, as_key: str, max_neurons: int = 5) -> BrainInjectConfig:

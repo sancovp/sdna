@@ -6,9 +6,12 @@ adding goal templating, brain integration, and chain/dovetail support.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Union, Callable
+from typing import Optional, List, Dict, Any, Union, Callable, TYPE_CHECKING
 from pathlib import Path
 from pydantic import Field, BaseModel, ConfigDict
+
+if TYPE_CHECKING:
+    from .state import SDNAState
 
 # Import SDK types
 try:
@@ -175,6 +178,35 @@ class HermesConfig(BaseModel):
             "goal": self.resolve_goal(variable_inputs),
             "options": self.to_sdk_options(),
         }
+
+    def to_langgraph_node(self) -> Callable[["SDNAState"], Dict[str, Any]]:
+        """
+        Convert to LangGraph node that executes Poimandres generation.
+
+        The node reads context from state, executes via poimandres.execute(),
+        and returns updated state with output.
+        """
+        async def node(state: "SDNAState") -> Dict[str, Any]:
+            from . import poimandres
+            from .state import SDNAState
+
+            ctx = dict(state.get("context", {}))
+            result = await poimandres.execute(self, ctx)
+
+            if result.blocked:
+                return {"status": "blocked", "error": "Poimandres blocked"}
+            elif not result.success:
+                return {"status": "error", "error": result.error}
+
+            # Update context with output
+            ctx.update(result.output or {})
+            return {
+                "context": ctx,
+                "status": "success",
+                "output": result.output,
+                "results": state.get("results", []) + [{"poimandres": result.output}],
+            }
+        return node
 
 
 class HermesConfigInput(BaseModel):

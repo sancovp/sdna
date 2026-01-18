@@ -1,15 +1,20 @@
 """
 SDNA - Sanctuary DNA
 
-Gnostic agent workflow DSL for Claude Agent SDK.
+Gnostic agent workflow DSL with LangGraph as native execution substrate.
 Ariadne (threading) + Poimandres (generation) = SDNA spiral.
 
 Components:
 - Ariadne: context threading (inject, weave, human input)
 - Poimandres: generation moment (execute)
 - SDNA: spiral composition (SDNAC → SDNAF → SDNA^F)
+- State: SDNAState TypedDict for LangGraph execution
+
+Every chain has to_graph() which returns a LangGraph CompiledGraph.
+Every element has to_langgraph_node() for custom composition.
 """
 
+from .state import SDNAState, initial_state
 from .config import HermesConfig, DovetailModel, HermesConfigInput
 from .tools import BlockedReport, parse_blocked_from_text, get_cached_reports, clear_cached_reports
 from .runner import agent_step, StepResult, StepStatus
@@ -28,6 +33,9 @@ from .sdna import (
 from . import poimandres
 
 __all__ = [
+    # State (LangGraph substrate)
+    "SDNAState",
+    "initial_state",
     # Config
     "HermesConfig",
     "DovetailModel",
