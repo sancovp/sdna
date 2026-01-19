@@ -31,6 +31,8 @@ from .sdna import (
     sdnac, sdna_flow,
 )
 from .duo import DUOAgent, DUOResult, DUOStatus, duo_agent
+from .duo_v2 import DuoAgentV2, DUOv2Result, DUOv2Status, duo_agent_v2
+from .tags import extract_tags, match_tags, has_tag, tag_equals, tag_contains, ANY
 from . import poimandres
 
 __all__ = [
@@ -90,4 +92,16 @@ __all__ = [
     "DUOResult",
     "DUOStatus",
     "duo_agent",
+    # DUO V2 (full 4-step pattern)
+    "DuoAgentV2",
+    "DUOv2Result",
+    "DUOv2Status",
+    "duo_agent_v2",
+    # Tags (extraction/matching)
+    "extract_tags",
+    "match_tags",
+    "has_tag",
+    "tag_equals",
+    "tag_contains",
+    "ANY",
 ]

@@ -120,6 +120,9 @@ class DUOAgent:
             target_result = await self.target.execute(ctx)
             ctx = target_result.context
 
+            # Preserve target output before OVP potentially overwrites "text"
+            ctx["target_output"] = ctx.get("text", "")
+
             # Check for non-success from Target
             if target_result.status == SDNAStatus.AWAITING_INPUT:
                 return DUOResult(
