@@ -95,14 +95,59 @@ class WeaveConfig(BaseModel):
     start_index: Optional[int] = None
     end_index: Optional[int] = None
     inject_as: str = "woven_context"
+    summarize: bool = False
 
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        # TODO: Implement with SDK session access
-        context[self.inject_as] = {
-            "source": self.source_session,
-            "range": (self.start_index, self.end_index),
-            "_pending": True,
-        }
+        """Execute weave using context_engineering lib."""
+        try:
+            from .context_engineering import get_lib
+
+            lib = get_lib()
+
+            # Get source session (or active if not specified)
+            source = None
+            if self.source_session:
+                source = lib.get_session(self.source_session)
+            if not source:
+                source = lib.get_active_session()
+
+            # Get target session (or active if not specified)
+            target = None
+            if self.target_session:
+                target = lib.get_session(self.target_session)
+            if not target:
+                target = lib.get_active_session()
+
+            if source and target:
+                # Perform weave
+                start = self.start_index if self.start_index is not None else 0
+                end = self.end_index if self.end_index is not None else -1
+
+                result = lib.weave(source, target, start, end, self.summarize)
+                context[self.inject_as] = result.content
+                context[f"{self.inject_as}_meta"] = {
+                    "source": result.source_session,
+                    "target": result.target_session,
+                    "range": (result.start_index, result.end_index),
+                    "token_estimate": result.token_estimate,
+                    "summarized": result.summarized,
+                }
+            else:
+                # Fallback: mark as pending
+                context[self.inject_as] = {
+                    "source": self.source_session,
+                    "range": (self.start_index, self.end_index),
+                    "_pending": True,
+                    "_error": "Could not resolve sessions"
+                }
+        except ImportError:
+            # context_engineering not available, use fallback
+            context[self.inject_as] = {
+                "source": self.source_session,
+                "range": (self.start_index, self.end_index),
+                "_pending": True,
+            }
+
         return context
 
     def to_langgraph_node(self) -> Callable[[SDNAState], Dict[str, Any]]:
@@ -114,7 +159,48 @@ class WeaveConfig(BaseModel):
         return node
 
 
-AriadneElement = Union[HumanInput, InjectConfig, WeaveConfig, DovetailModel, "BrainInjectConfig"]
+class ContextInjectConfig(BaseModel):
+    """Inject context using context_engineering lib directly."""
+    context: Dict[str, Any]
+    method: str = "prepend"  # prepend, file, rules, env
+    inject_as: str = "injected_context"
+
+    async def execute(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute context injection using context_engineering lib."""
+        try:
+            from .context_engineering import get_lib, InjectMethod
+
+            lib = get_lib()
+            session = lib.get_active_session()
+
+            if session:
+                method_map = {
+                    "prepend": InjectMethod.PREPEND,
+                    "file": InjectMethod.FILE,
+                    "rules": InjectMethod.RULES,
+                    "env": InjectMethod.ENV,
+                }
+                inject_method = method_map.get(self.method, InjectMethod.PREPEND)
+                lib.inject(session, self.context, inject_method, self.inject_as)
+
+            # Also store in Ariadne context for chain access
+            ctx[self.inject_as] = self.context
+        except ImportError:
+            # Fallback: just store in context
+            ctx[self.inject_as] = self.context
+
+        return ctx
+
+    def to_langgraph_node(self) -> Callable[[SDNAState], Dict[str, Any]]:
+        """Convert to LangGraph node that injects context."""
+        async def node(state: SDNAState) -> Dict[str, Any]:
+            ctx = dict(state.get("context", {}))
+            ctx = await self.execute(ctx)
+            return {"context": ctx}
+        return node
+
+
+AriadneElement = Union[HumanInput, InjectConfig, WeaveConfig, ContextInjectConfig, DovetailModel, "BrainInjectConfig"]
 
 
 # =============================================================================
@@ -182,6 +268,9 @@ class AriadneChain:
                     ctx = await elem.execute(ctx)
 
                 elif isinstance(elem, BrainInjectConfig):
+                    ctx = await elem.execute(ctx)
+
+                elif isinstance(elem, ContextInjectConfig):
                     ctx = await elem.execute(ctx)
 
                 elif isinstance(elem, DovetailModel):
@@ -436,4 +525,27 @@ def inject_brain(directory: str, query_key: str, as_key: str, max_neurons: int =
         query_key=query_key,
         inject_as=as_key,
         max_neurons=max_neurons,
+    )
+
+
+def inject_context(
+    context: Dict[str, Any],
+    as_key: str = "injected",
+    method: str = "prepend"
+) -> ContextInjectConfig:
+    """
+    Inject arbitrary context using context_engineering lib.
+
+    Args:
+        context: Dict of context to inject
+        as_key: Key to store context under
+        method: Injection method (prepend, file, rules, env)
+
+    Example:
+        inject_context({'api_key': 'xxx', 'mode': 'fast'}, 'config', 'prepend')
+    """
+    return ContextInjectConfig(
+        context=context,
+        inject_as=as_key,
+        method=method,
     )
