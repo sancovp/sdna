@@ -66,6 +66,154 @@ class ParsedMessage:
 
 
 # =============================================================================
+# TRANSITION ACTIONS - For chaining context ops with loop transitions
+# =============================================================================
+
+@dataclass
+class TransitionAction:
+    """Base class for transition actions.
+    
+    Subclasses can be used as AgentInferenceLoop.next to chain
+    context_engineering operations with loop activations.
+    """
+    then: Optional['TransitionAction'] = None
+    
+    def execute(self, lib: 'ContextEngineeringLib') -> Dict[str, Any]:
+        """Execute this action. Override in subclasses."""
+        raise NotImplementedError
+    
+    def execute_chain(self, lib: 'ContextEngineeringLib') -> List[Dict[str, Any]]:
+        """Execute this action and all chained actions. Fail-fast on any error."""
+        results = []
+        current = self
+        
+        while current is not None:
+            result = current.execute(lib)
+            results.append({"action": current.__class__.__name__, "result": result})
+            
+            # Check for failure
+            if result.get("error"):
+                raise RuntimeError(f"Chain failed at {current.__class__.__name__}: {result['error']}")
+            
+            current = current.then
+        
+        return results
+
+
+@dataclass
+class ActivateLoop(TransitionAction):
+    """Activate an AgentInferenceLoop by name.
+    
+    This is handled by the DNA executor, not by context_engineering.
+    Included here for type completeness.
+    """
+    loop_name: str
+    then: Optional[TransitionAction] = None
+    
+    def execute(self, lib: 'ContextEngineeringLib') -> Dict[str, Any]:
+        # This is a marker - actual execution happens in DNA
+        return {"action": "activate_loop", "loop": self.loop_name}
+
+
+@dataclass
+class WeaveContext(TransitionAction):
+    """Weave messages from source to target session.
+    
+    Args:
+        source: Source tmux session name
+        target: Target tmux session name
+        start: Start message index (default: 0)
+        end: End message index (default: -1 = all)
+        new_chat: If True, send /new before weaving
+        prompt: Custom prompt to send with context
+    """
+    source: str
+    target: str
+    start: int = 0
+    end: int = -1
+    new_chat: bool = False
+    prompt: Optional[str] = None
+    then: Optional[TransitionAction] = None
+    
+    def execute(self, lib: 'ContextEngineeringLib') -> Dict[str, Any]:
+        # Resolve session names to Session objects
+        source_session = Session(
+            id=self.source, 
+            transport=TransportType.TMUX, 
+            tmux_session=self.source
+        )
+        target_session = Session(
+            id=self.target, 
+            transport=TransportType.TMUX, 
+            tmux_session=self.target
+        )
+        
+        try:
+            result = lib.weave(
+                source=source_session,
+                target=target_session,
+                start=self.start,
+                end=self.end,
+                new_chat=self.new_chat,
+                prompt=self.prompt
+            )
+            return {"action": "weave", "result": result}
+        except Exception as e:
+            return {"action": "weave", "error": str(e)}
+
+
+@dataclass
+class InjectContext(TransitionAction):
+    """Inject context into a session.
+    
+    Args:
+        target: Target tmux session name
+        context: Dict of context to inject
+        method: Injection method (prepend, file, rules, env)
+    """
+    target: str
+    context: Dict[str, Any] = field(default_factory=dict)
+    method: InjectMethod = InjectMethod.PREPEND
+    then: Optional[TransitionAction] = None
+    
+    def execute(self, lib: 'ContextEngineeringLib') -> Dict[str, Any]:
+        target_session = Session(
+            id=self.target,
+            transport=TransportType.TMUX,
+            tmux_session=self.target
+        )
+        
+        try:
+            success = lib.inject(target_session, self.context, self.method)
+            return {"action": "inject", "success": success}
+        except Exception as e:
+            return {"action": "inject", "error": str(e)}
+
+
+@dataclass 
+class RunSequence(TransitionAction):
+    """Run a sequence of actions (not chained via then).
+    
+    All actions in the sequence run before moving to 'then'.
+    """
+    actions: List[TransitionAction] = field(default_factory=list)
+    then: Optional[TransitionAction] = None
+    
+    def execute(self, lib: 'ContextEngineeringLib') -> Dict[str, Any]:
+        results = []
+        for action in self.actions:
+            result = action.execute(lib)
+            results.append({"action": action.__class__.__name__, "result": result})
+            if result.get("error"):
+                return {"action": "sequence", "error": f"Failed at {action.__class__.__name__}", "results": results}
+        return {"action": "sequence", "results": results}
+
+
+# Type alias for AgentInferenceLoop.next
+NextTarget = Optional[TransitionAction | str]
+
+
+# =============================================================================
 # TMUX MESSAGE PARSING
 # =============================================================================
 
@@ -568,19 +716,30 @@ class ContextEngineeringLib:
         self,
         source: Session,
         target: Session,
-        start: int,
-        end: int,
-        summarize: bool = False
+        start: int = 0,
+        end: int = -1,
+        summarize: bool = False,
+        new_chat: bool = False,
+        prompt: Optional[str] = None,
+        file_threshold: int = 4000,
+        weave_dir: str = "/tmp/weaves"
     ) -> WeaveResult:
         """
         Weave message range from source to target session.
+        
+        Captures messages from source, optionally starts /new in target,
+        and sends the context immediately.
 
         Args:
             source: Source session to pull from
             target: Target session to inject into
-            start: Start message index (0-based, negative = from end)
-            end: End message index (0-based, negative = from end)
+            start: Start message index (0-based, negative = from end, default: 0)
+            end: End message index (0-based, negative = from end, default: -1 = all)
             summarize: Whether to summarize content first
+            new_chat: If True, send /new to target before sending
+            prompt: Optional prompt to send with context (default: generic review prompt)
+            file_threshold: If content > this many chars, write to file instead of inline
+            weave_dir: Directory to store weave files
 
         Returns:
             WeaveResult with extracted content
@@ -597,7 +756,7 @@ class ContextEngineeringLib:
         if start < 0:
             start = max(0, len(messages) + start)
         if end < 0:
-            end = len(messages) + end
+            end = len(messages) + end + 1  # +1 so -1 means "through the end"
 
         # Extract message range
         selected = messages[start:end]
@@ -610,6 +769,24 @@ class ContextEngineeringLib:
         # Estimate tokens (rough: ~4 chars per token)
         token_estimate = len(content) // 4
 
+        # Determine if we need to use file-based injection
+        use_file = len(content) > file_threshold
+        file_path = None
+        
+        if use_file:
+            # Write content to file
+            import time
+            Path(weave_dir).mkdir(parents=True, exist_ok=True)
+            timestamp = int(time.time())
+            source_name = source.tmux_session if source.transport == TransportType.TMUX else source.id
+            file_path = f"{weave_dir}/weave_{source_name}_{timestamp}.md"
+            
+            with open(file_path, 'w') as f:
+                f.write(f"# Woven Context from {source.id}\n\n")
+                f.write(f"Messages {start} to {end}\n\n")
+                f.write("---\n\n")
+                f.write(content)
+
         result = WeaveResult(
             source_session=source.id,
             target_session=target.id,
@@ -620,8 +797,24 @@ class ContextEngineeringLib:
             token_estimate=token_estimate
         )
 
-        # Auto-inject into target as prepend
-        self.inject(target, {"woven_context": content}, InjectMethod.PREPEND)
+        # Start new chat if requested
+        if new_chat and target.transport == TransportType.TMUX:
+            self._tmux.send_keys(target.tmux_session, "/new")
+            import time
+            time.sleep(1)  # Give Claude Code time to process /new
+
+        # Build and send the message
+        final_prompt = prompt or "Here is context from another session. Please review and continue."
+        
+        if use_file:
+            full_message = f"Here is a conversation from another session:\n\n{file_path}\n\n{final_prompt}"
+        else:
+            full_message = f"<woven_context>\n{content}\n</woven_context>\n\n{final_prompt}"
+        
+        if target.transport == TransportType.TMUX:
+            self._tmux.send_keys(target.tmux_session, full_message)
+        else:
+            self._sdk.send(full_message)
 
         return result
 

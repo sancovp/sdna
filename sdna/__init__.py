@@ -16,6 +16,10 @@ Every element has to_langgraph_node() for custom composition.
 
 from .state import SDNAState, initial_state
 from .config import HermesConfig, DovetailModel, HermesConfigInput
+from .claude_code_commands import ClaudeCodeSession, get_session, list_tmux_sessions, find_claude_session
+from .context_engineering import (
+    TransitionAction, ActivateLoop, WeaveContext, InjectContext, RunSequence, NextTarget
+)
 from .tools import BlockedReport, parse_blocked_from_text, get_cached_reports, clear_cached_reports
 from .runner import agent_step, StepResult, StepStatus
 from .ariadne import (
@@ -33,7 +37,9 @@ from .sdna import (
 from .duo import DUOAgent, DUOResult, DUOStatus, duo_agent
 from .duo_v2 import DuoAgentV2, DUOv2Result, DUOv2Status, duo_agent_v2
 from .tags import extract_tags, match_tags, has_tag, tag_equals, tag_contains, ANY
+# code_agent removed - hooks now in CAVE
 from . import poimandres
+from .defaults import get_default_mcp_servers, get_default_hermes_config, default_config
 
 __all__ = [
     # State (LangGraph substrate)
@@ -104,4 +110,21 @@ __all__ = [
     "tag_equals",
     "tag_contains",
     "ANY",
+    # code_agent removed - hooks now in CAVE
+    # Defaults (MCP configs)
+    "get_default_mcp_servers",
+    "get_default_hermes_config",
+    "default_config",
+    # Claude Code Commands
+    "ClaudeCodeSession",
+    "get_session",
+    "list_tmux_sessions",
+    "find_claude_session",
+    # Transition Actions (for chaining context ops with loop transitions)
+    "TransitionAction",
+    "ActivateLoop",
+    "WeaveContext",
+    "InjectContext",
+    "RunSequence",
+    "NextTarget",
 ]
