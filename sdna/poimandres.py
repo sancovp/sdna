@@ -4,14 +4,15 @@ Poimandres - The Divine Mind
 The generation moment. Takes HermesConfig (the message Ariadne sends)
 and context, runs the agent, produces output.
 
-Poimandres is not a chain - it's the act of generation.
+Routes to either claude_agent_sdk (runner.py) or Heaven/MiniMax (heaven_runner.py)
+based on config.backend.
 """
 
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
 
 from .config import HermesConfig
-from .runner import agent_step, StepResult, StepStatus
+from .runner import StepResult, StepStatus
 
 
 @dataclass
@@ -31,8 +32,9 @@ async def execute(
     """
     The generation moment - Poimandres executes.
 
-    Takes HermesConfig (the message Ariadne sends) and context,
-    runs the agent via agent_step, returns PoimandresResult.
+    Routes to the appropriate backend based on config.backend:
+    - "claude" (default): claude_agent_sdk via runner.agent_step()
+    - "heaven": Heaven framework via heaven_runner.heaven_agent_step()
 
     Args:
         config: HermesConfig with agent settings
@@ -40,19 +42,16 @@ async def execute(
 
     Returns:
         PoimandresResult with success/blocked/error status and output
-
-    Example:
-        from hermes import poimandres, HermesConfig
-
-        config = HermesConfig(name='gen', system_prompt='...')
-        result = await poimandres.execute(config, {'spec': '...'})
-        if result.success:
-            print(result.output)
     """
     ctx = dict(context) if context else {}
 
     try:
-        step_result = await agent_step(config, ctx)
+        if config.backend == "heaven":
+            from .heaven_runner import heaven_agent_step
+            step_result = await heaven_agent_step(config, ctx)
+        else:
+            from .runner import agent_step
+            step_result = await agent_step(config, ctx)
 
         if step_result.status == StepStatus.BLOCKED:
             return PoimandresResult(

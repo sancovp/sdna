@@ -69,12 +69,14 @@ class ParsedMessage:
 # TRANSITION ACTIONS - For chaining context ops with loop transitions
 # =============================================================================
 
-@dataclass
 class TransitionAction:
     """Base class for transition actions.
     
     Subclasses can be used as AgentInferenceLoop.next to chain
     context_engineering operations with loop activations.
+    
+    Note: This is NOT a dataclass. Subclasses should be dataclasses
+    that define 'then' field after their required fields.
     """
     then: Optional['TransitionAction'] = None
     
@@ -207,6 +209,285 @@ class RunSequence(TransitionAction):
             if result.get("error"):
                 return {"action": "sequence", "error": f"Failed at {action.__class__.__name__}", "results": results}
         return {"action": "sequence", "results": results}
+
+
+# =============================================================================
+# HEARTBEAT SYSTEM - Scheduled execution of TransitionAction chains
+# =============================================================================
+
+import time
+import threading
+from datetime import datetime
+
+@dataclass
+class Heartbeat:
+    """A scheduled prompt to a remote agent session.
+    
+    Heartbeat calls a session on a schedule with a prompt built via Ariadne.
+    
+    Usage:
+        from sdna import heartbeat, ariadne, inject_file, human
+        
+        # Every 60 seconds, prompt the cave session
+        hb = heartbeat(
+            name="context_sync",
+            session="cave",
+            ariadne=ariadne(
+                inject_file("/context/notes.md"),
+            ),
+            prompt="Review these notes and summarize",  # Injected into ariadne
+            every=60
+        )
+        
+        # Run with cron expression (requires croniter)
+        hb = heartbeat(
+            name="daily_summary",
+            session="cave",
+            ariadne=ariadne(
+                inject_file("/logs/daily.md"),
+            ),
+            cron="0 9 * * *",  # 9 AM daily
+        )
+    """
+    name: str
+    session: str                      # Target tmux session
+    ariadne: 'AriadneChain'           # Required: Ariadne chain to build prompt
+    every: Optional[int] = None       # Interval in seconds
+    cron: Optional[str] = None        # Cron expression (requires croniter)
+    prompt: Optional[str] = None      # Optional prompt to inject into ariadne
+    enabled: bool = True
+    
+    # Runtime state (not for init)
+    last_run: Optional[datetime] = field(default=None, repr=False)
+    run_count: int = field(default=0, repr=False)
+    
+    def __post_init__(self):
+        if not self.every and not self.cron:
+            raise ValueError("Heartbeat requires either 'every' (seconds) or 'cron' expression")
+    
+    def is_due(self) -> bool:
+        """Check if this heartbeat is due to run."""
+        if not self.enabled:
+            return False
+            
+        now = datetime.now()
+        
+        if self.every:
+            if self.last_run is None:
+                return True  # Never run, run now
+            elapsed = (now - self.last_run).total_seconds()
+            return elapsed >= self.every
+        
+        if self.cron:
+            try:
+                from croniter import croniter
+                cron_iter = croniter(self.cron, self.last_run or now)
+                next_run = cron_iter.get_next(datetime)
+                return now >= next_run
+            except ImportError:
+                # croniter not installed, skip cron heartbeats
+                return False
+        
+        return False
+    
+    def execute(self) -> Dict[str, Any]:
+        """Execute the heartbeat - send prompt to session via Ariadne."""
+        self.last_run = datetime.now()
+        self.run_count += 1
+        
+        try:
+            # Import here to avoid circular imports
+            from .ariadne import human
+            
+            # Build the ariadne chain
+            chain = self.ariadne
+            
+            # If prompt provided, append as human input
+            if self.prompt:
+                chain = chain + human(self.prompt)
+            
+            # Execute the ariadne chain targeting our session
+            # AriadneChain.execute() returns AriadneResult
+            result = chain.execute(session=self.session)
+            
+            return {
+                "heartbeat": self.name,
+                "session": self.session,
+                "run_count": self.run_count,
+                "timestamp": self.last_run.isoformat(),
+                "ariadne_result": result
+            }
+        except Exception as e:
+            return {
+                "heartbeat": self.name,
+                "session": self.session,
+                "run_count": self.run_count,
+                "error": str(e)
+            }
+
+
+class HeartbeatScheduler:
+    """Scheduler for running multiple Heartbeats.
+    
+    Usage:
+        from sdna import HeartbeatScheduler, heartbeat, ariadne, inject_file
+        
+        scheduler = HeartbeatScheduler()
+        
+        scheduler.add(heartbeat(
+            name="sync_notes",
+            session="cave",
+            ariadne=ariadne(inject_file("/notes.md")),
+            prompt="Review and summarize",
+            every=300  # Every 5 minutes
+        ))
+        
+        # Start in background
+        scheduler.start()
+        
+        # Or run blocking
+        scheduler.run_blocking()
+    """
+    
+    def __init__(self):
+        self.heartbeats: Dict[str, Heartbeat] = {}
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+    
+    def add(self, hb: Heartbeat) -> None:
+        """Add a heartbeat to the scheduler."""
+        self.heartbeats[hb.name] = hb
+    
+    def remove(self, name: str) -> bool:
+        """Remove a heartbeat by name."""
+        if name in self.heartbeats:
+            del self.heartbeats[name]
+            return True
+        return False
+    
+    def enable(self, name: str) -> bool:
+        """Enable a heartbeat."""
+        if name in self.heartbeats:
+            self.heartbeats[name].enabled = True
+            return True
+        return False
+    
+    def disable(self, name: str) -> bool:
+        """Disable a heartbeat without removing it."""
+        if name in self.heartbeats:
+            self.heartbeats[name].enabled = False
+            return True
+        return False
+    
+    def _tick(self) -> List[Dict[str, Any]]:
+        """Check all heartbeats and run any that are due."""
+        results = []
+        
+        for hb in self.heartbeats.values():
+            if hb.is_due():
+                result = hb.execute()
+                results.append(result)
+        
+        return results
+    
+    def start(self, check_interval: float = 1.0) -> None:
+        """Start the scheduler in a background thread."""
+        if self._running:
+            return
+        
+        self._running = True
+        
+        def run_loop():
+            while self._running:
+                self._tick()
+                time.sleep(check_interval)
+        
+        self._thread = threading.Thread(target=run_loop, daemon=True)
+        self._thread.start()
+    
+    def stop(self) -> None:
+        """Stop the scheduler."""
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=5)
+    
+    def run_blocking(self, check_interval: float = 1.0) -> None:
+        """Run the scheduler in the main thread (blocking)."""
+        self._running = True
+        try:
+            while self._running:
+                self._tick()
+                time.sleep(check_interval)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self._running = False
+    
+    def status(self) -> Dict[str, Any]:
+        """Get status of all heartbeats."""
+        return {
+            "running": self._running,
+            "heartbeats": {
+                name: {
+                    "session": hb.session,
+                    "enabled": hb.enabled,
+                    "every": hb.every,
+                    "cron": hb.cron,
+                    "last_run": hb.last_run.isoformat() if hb.last_run else None,
+                    "run_count": hb.run_count
+                }
+                for name, hb in self.heartbeats.items()
+            }
+        }
+
+
+# Convenience function
+def heartbeat(
+    name: str,
+    session: str,
+    ariadne: 'AriadneChain',
+    every: Optional[int] = None,
+    cron: Optional[str] = None,
+    prompt: Optional[str] = None
+) -> Heartbeat:
+    """Create a Heartbeat.
+    
+    Args:
+        name: Unique identifier for this heartbeat
+        session: Target tmux session name
+        ariadne: AriadneChain to build the prompt
+        every: Interval in seconds (e.g., 60 = every minute)
+        cron: Cron expression (e.g., "*/5 * * * *" = every 5 minutes)
+        prompt: Optional prompt string to inject into ariadne
+    
+    Examples:
+        from sdna import heartbeat, ariadne, inject_file
+        
+        # Every 60 seconds
+        heartbeat(
+            name="sync", 
+            session="cave",
+            ariadne=ariadne(inject_file("/notes.md")),
+            prompt="Summarize these notes",
+            every=60
+        )
+        
+        # Every 5 minutes via cron
+        heartbeat(
+            name="daily",
+            session="cave", 
+            ariadne=ariadne(inject_file("/logs.md")),
+            cron="*/5 * * * *"
+        )
+    """
+    return Heartbeat(
+        name=name, 
+        session=session, 
+        ariadne=ariadne, 
+        every=every, 
+        cron=cron,
+        prompt=prompt
+    )
 
 
 # Type alias for AgentInferenceLoop.next

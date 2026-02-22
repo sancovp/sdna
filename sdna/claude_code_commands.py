@@ -405,3 +405,118 @@ def find_claude_session() -> Optional[str]:
             return preferred
     # Return first if any exist
     return sessions[0] if sessions else None
+
+
+def find_current_transcript() -> Optional[str]:
+    """Find the most recent Claude Code transcript JSONL by mtime."""
+    from pathlib import Path
+    project_dir = Path.home() / ".claude" / "projects" / "-home-GOD"
+    if not project_dir.exists():
+        return None
+    jsonls = sorted(project_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return str(jsonls[0]) if jsonls else None
+
+
+def slinky_compress_and_restart(
+    session_name: Optional[str] = None,
+    transcript_path: Optional[str] = None,
+    preserve_recent: int = 3,
+    resume: bool = True,
+    timeout_exit: int = 15,
+    timeout_restart: int = 20,
+) -> dict:
+    """Kill Claude -> compress transcript -> restart Claude.
+
+    This is the composed Slinky flow. Call from outside Claude
+    (CAVE, cron, manual script) — NOT from inside a running session.
+
+    Args:
+        session_name: tmux session name (auto-detected if None)
+        transcript_path: path to .jsonl (auto-detected if None)
+        preserve_recent: iterations to keep uncompressed
+        resume: whether to /resume after restart
+        timeout_exit: seconds to wait for Claude to die
+        timeout_restart: seconds to wait for Claude to be idle after relaunch
+
+    Returns:
+        Stats dict from slinky_compress + lifecycle info
+    """
+    import shutil
+    from datetime import datetime
+    from pathlib import Path
+    from .slinky_v2 import slinky_compress
+
+    # Auto-detect session
+    if not session_name:
+        session_name = find_claude_session()
+    if not session_name:
+        return {"error": "No tmux session found"}
+
+    # Auto-detect transcript
+    if not transcript_path:
+        transcript_path = find_current_transcript()
+    if not transcript_path:
+        return {"error": "No transcript JSONL found"}
+
+    cc = ClaudeCodeSession(session_name)
+    if not cc.session_exists():
+        return {"error": f"tmux session '{session_name}' does not exist"}
+
+    # Step 1: Kill Claude
+    cc._send_keys("/exit")
+    time.sleep(timeout_exit)
+
+    # Verify Claude exited (session still exists but claude process should be gone)
+    # Check if we see a shell prompt instead of Claude
+    pane = cc._capture_pane(5)
+    if "❯" in pane or "claude" in pane.lower():
+        # Try harder
+        cc.cancel()
+        time.sleep(2)
+        cc._send_keys("/exit")
+        time.sleep(timeout_exit)
+
+    # Step 2: Archive transcript before compression
+    archive_dir = Path("/tmp/heaven_data/claude_code/sessions") / datetime.now().strftime("%Y%m%dT%H%M%S")
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = archive_dir / Path(transcript_path).name
+    shutil.copy2(transcript_path, archive_path)
+
+    # Step 3: Compress transcript
+    stats = slinky_compress(
+        session_path=transcript_path,
+        output_path=transcript_path,
+        preserve_recent=preserve_recent,
+    )
+    stats["archive"] = str(archive_path)
+
+    # Step 4: Restart Claude
+    cc._send_keys("claude --debug")
+    time.sleep(timeout_restart)
+
+    # Step 5: Resume if requested
+    if resume:
+        time.sleep(5)
+        cc._send_keys("/resume")
+        time.sleep(3)
+        cc._send_keys("1")  # Pick most recent conversation
+
+    stats["lifecycle"] = {
+        "session": session_name,
+        "transcript": transcript_path,
+        "resumed": resume,
+    }
+    return stats
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "slinky":
+        session = sys.argv[2] if len(sys.argv) > 2 else None
+        transcript = sys.argv[3] if len(sys.argv) > 3 else None
+        preserve = int(sys.argv[4]) if len(sys.argv) > 4 else 3
+        result = slinky_compress_and_restart(session, transcript, preserve)
+        import json
+        print(json.dumps(result, indent=2))
+    else:
+        print("Usage: python -m sdna.claude_code_commands slinky [session] [transcript] [preserve_n]")

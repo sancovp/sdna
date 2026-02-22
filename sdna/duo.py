@@ -164,8 +164,17 @@ class DUOAgent:
                 )
 
             # Check if OVP approved
-            approved = ctx.get(self.approval_key, False)
+            # If approval_key not explicitly set (e.g. Heaven backend only returns text),
+            # parse OVP text output for approval keywords
+            approved = ctx.get(self.approval_key)
+            if approved is None:
+                ovp_text = ctx.get("text", "").upper()
+                approved = "APPROVED" in ovp_text or "OVP_APPROVED: TRUE" in ovp_text
+                ctx[self.approval_key] = approved
             feedback = ctx.get(self.feedback_key)
+            if feedback is None:
+                feedback = ctx.get("text", "")
+                ctx[self.feedback_key] = feedback
 
             if approved:
                 return DUOResult(

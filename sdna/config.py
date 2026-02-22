@@ -22,6 +22,62 @@ except ImportError:
     ClaudeAgentOptions = None
 
 
+class HeavenAgentArgs(BaseModel):
+    """
+    Heaven-specific agent config fields.
+
+    These fields + parent HermesConfig fields (name, system_prompt, model, mcp_servers)
+    are combined by heaven_runner.py to build a HeavenAgentConfig.
+
+    Defaults target MiniMax via Anthropic-compatible API:
+    - provider=ANTHROPIC, use_uni_api=False → ChatAnthropic path
+    - extra_model_kwargs carries anthropic_api_url + default_headers for MiniMax auth
+    - Model default: MiniMax-M2.5-highspeed
+    """
+    provider: str = "ANTHROPIC"
+    temperature: float = 0.7
+    max_tokens: int = 8000
+    thinking_budget: Optional[int] = None
+    tools: List[Any] = Field(default_factory=list)  # Heaven tools (BaseHeavenTool subclasses or MCP strings)
+    extra_model_kwargs: Optional[Dict[str, Any]] = None  # Set by adaptor if None: anthropic_api_url + default_headers
+    use_uni_api: bool = False  # False = ChatAnthropic path (required for MiniMax anthropic_api_url)
+    # HEAVEN extraction: capture fenced/XML blocks into agent_status.extracted_content
+    additional_kws: List[str] = Field(default_factory=list)
+    additional_kw_instructions: str = ""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class HeavenHermesArgs(BaseModel):
+    """
+    Extra args for Heaven's HermesConfig args_template beyond goal/iterations/agent.
+
+    Goal comes from SDNA HermesConfig.goal, iterations from max_turns.
+    """
+    history_id: Optional[str] = None
+    return_summary: bool = False
+    ai_messages_only: bool = True
+    continuation: Optional[str] = None
+    additional_tools: Optional[List[Any]] = None
+    remove_agents_config_tools: bool = False
+    orchestration_preprocess: bool = False
+    variable_inputs: Dict[str, Any] = Field(default_factory=dict)
+    system_prompt_suffix: Optional[str] = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class HeavenInputs(BaseModel):
+    """
+    Complete Heaven input specification for SDNA → Heaven adaptation.
+
+    Contains args for both HeavenAgentConfig and Heaven HermesConfig.
+    heaven_runner.py reads these to build the proper Heaven objects.
+    """
+    agent: HeavenAgentArgs = Field(default_factory=HeavenAgentArgs)
+    hermes: HeavenHermesArgs = Field(default_factory=HeavenHermesArgs)
+
+
 class HermesConfig(BaseModel):
     """
     Configuration for a single agent execution.
@@ -37,6 +93,18 @@ class HermesConfig(BaseModel):
     name: str = ""  # Config identifier
     goal: str = ""  # Templated prompt (use {var} for interpolation)
     variable_inputs: Dict[str, Any] = Field(default_factory=dict)
+
+    # Backend selection: "claude" (claude_agent_sdk) or "heaven" (Heaven → MiniMax)
+    backend: str = "claude"
+
+    # Pre-built Heaven agent: if set, used directly as args_template["agent"].
+    # Accepts: HeavenAgentConfig, agent name string, or Replicant class.
+    # If None and backend="heaven", built from heaven_inputs.agent + this config's fields.
+    heaven_agent: Optional[Any] = None
+
+    # Heaven-specific inputs: agent config args + hermes config args.
+    # Used by heaven_runner.py to build HeavenAgentConfig and Heaven HermesConfig.
+    heaven_inputs: Optional[HeavenInputs] = None
 
     # Brain integration
     brain_query: Optional[str] = None

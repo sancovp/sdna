@@ -15,13 +15,35 @@ Every element has to_langgraph_node() for custom composition.
 """
 
 from .state import SDNAState, initial_state
-from .config import HermesConfig, DovetailModel, HermesConfigInput
+from .config import HermesConfig, DovetailModel, HermesConfigInput, HeavenInputs, HeavenAgentArgs, HeavenHermesArgs
 from .claude_code_commands import ClaudeCodeSession, get_session, list_tmux_sessions, find_claude_session
 from .context_engineering import (
-    TransitionAction, ActivateLoop, WeaveContext, InjectContext, RunSequence, NextTarget
+    TransitionAction, ActivateLoop, WeaveContext, InjectContext, RunSequence, NextTarget,
+    Heartbeat, HeartbeatScheduler, heartbeat
+)
+from .slinky_context import (
+    ContentLocation, SessionScanner, CartonStore,
+    SlinkyCompressor, CompressionResult, compress_session
+)
+from .slinky_manager import (
+    SlinkyWatcher, SlinkyRollup, GiintIntegration, SlinkyState, CompressionEvent,
+    start_slinky, stop_slinky, get_slinky_status
 )
 from .tools import BlockedReport, parse_blocked_from_text, get_cached_reports, clear_cached_reports
+from .crystal_ball import (
+    CrystalBallError,
+    CrystalBallPaths,
+    CrystalBallRunner,
+    get_crystal_ball_runner,
+    cb_map_cypher_to_cb,
+    cb_enrich_story_machine_cb,
+    cb_read_cb_stats,
+    cb_bootstrap_story_machine,
+    cb_llm_suggest,
+)
+from .crystal_ball_flow import create_flow as create_crystal_ball_flow, run as run_crystal_ball_flow
 from .runner import agent_step, StepResult, StepStatus
+from .heaven_runner import heaven_agent_step
 from .ariadne import (
     AriadneChain, AriadneResult, AriadneStatus,
     AriadneElement, HumanInput, InjectConfig, WeaveConfig, BrainInjectConfig,
@@ -49,13 +71,28 @@ __all__ = [
     "HermesConfig",
     "DovetailModel",
     "HermesConfigInput",
+    "HeavenInputs",
+    "HeavenAgentArgs",
+    "HeavenHermesArgs",
     # Tools
     "BlockedReport",
     "parse_blocked_from_text",
     "get_cached_reports",
     "clear_cached_reports",
+    "CrystalBallError",
+    "CrystalBallPaths",
+    "CrystalBallRunner",
+    "get_crystal_ball_runner",
+    "cb_map_cypher_to_cb",
+    "cb_enrich_story_machine_cb",
+    "cb_read_cb_stats",
+    "cb_bootstrap_story_machine",
+    "cb_llm_suggest",
+    "create_crystal_ball_flow",
+    "run_crystal_ball_flow",
     # Runner
     "agent_step",
+    "heaven_agent_step",
     "StepResult",
     "StepStatus",
     # Ariadne (context threading)
@@ -127,4 +164,24 @@ __all__ = [
     "InjectContext",
     "RunSequence",
     "NextTarget",
+    # Heartbeat system
+    "Heartbeat",
+    "HeartbeatScheduler",
+    "heartbeat",
+    # Slinky Context (hierarchical compression)
+    "ContentLocation",
+    "SessionScanner",
+    "CartonStore",
+    "SlinkyCompressor",
+    "CompressionResult",
+    "compress_session",
+    # Slinky Manager (GIINT-integrated background compressor)
+    "SlinkyWatcher",
+    "SlinkyRollup",
+    "GiintIntegration",
+    "SlinkyState",
+    "CompressionEvent",
+    "start_slinky",
+    "stop_slinky",
+    "get_slinky_status",
 ]
