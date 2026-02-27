@@ -8,6 +8,8 @@ Routes to either claude_agent_sdk (runner.py) or Heaven/MiniMax (heaven_runner.p
 based on config.backend.
 """
 
+import os
+import warnings
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
 
@@ -50,6 +52,13 @@ async def execute(
             from .heaven_runner import heaven_agent_step
             step_result = await heaven_agent_step(config, ctx)
         else:
+            if not os.environ.get("SDNA_ALLOW_CLAUDE_SDK"):
+                warnings.warn(
+                    "Poimandres using Claude SDK backend. Set backend='heaven' on HermesConfig "
+                    "to use Heaven, or set SDNA_ALLOW_CLAUDE_SDK=1 to suppress this warning.",
+                    UserWarning,
+                    stacklevel=2,
+                )
             from .runner import agent_step
             step_result = await agent_step(config, ctx)
 

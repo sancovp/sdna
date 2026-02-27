@@ -1,19 +1,35 @@
 """
-DUO - Dual Space Unifying Operators
+DUO - Dual Space Unifying Operators (DEPRECATED)
 
-DUOAgent IS an SDNA^F where:
-- Target = SDNAC (Poimandres does the work)
-- OVP = SDNAC (Observer evaluates with its own LLM call)
-- Loop: Target runs → OVP evaluates → rerun or accept (up to max_iterations)
+DEPRECATED: Use DUOChain from duo_chain.py instead.
 
-This is a GAN pattern: generator (Target SDNAC) + discriminator (OVP SDNAC) in refinement loop.
-Two SDNACs in a loop = SDNA^F.
+DUOAgent is the original 2-SDNAC pattern (poimandres + OVP) without a separate
+Ariadne position. It works but is structurally incomplete — missing the A-type
+archetype for explicit context threading between cycles.
 
-Three roles in DUO theory:
-- Ariadne (Challenger): Context threading - comes from upstream
-- Poimandres (Provider): Generation - the Target SDNAC
-- OVP (Observer View-Point): Evaluation - the OVP SDNAC that decides continue/done
+Migration:
+    # Old (DUOAgent):
+    duo = duo_agent('name', target_sdnac, ovp_sdnac, max_iterations=3)
+
+    # New (DUOChain with Passthrough A):
+    from sdna.duo_chain import duo_chain, PassthroughPosition, SDNACPosition, SDNACOVPPosition
+    chain = duo_chain('name',
+        ariadne=PassthroughPosition(),
+        poimandres=SDNACPosition(target_sdnac),
+        ovp=SDNACOVPPosition(ovp_sdnac),
+        max_n=1, max_duo_cycles=3,
+    )
+
+    # Or use AutoDUOAgent with explicit A:
+    chain = auto_duo_agent('name', ariadne_sdnac, poimandres_sdnac, ovp_sdnac)
+
+DUO archetype positions:
+- Ariadne (A-type): Context threading constraints
+- Poimandres (P-type): Generation constraints
+- OVP (Observer View-Point): Evaluation constraints
 """
+
+import warnings
 
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
@@ -53,35 +69,13 @@ class DUOResult:
 
 class DUOAgent:
     """
-    DUO = Dual Space Unifying Operators
+    DEPRECATED: Use DUOChain or AutoDUOAgent from duo_chain.py instead.
 
-    DUOAgent IS an SDNA^F where:
-    - Target = SDNAC (Poimandres does the work)
-    - OVP = SDNAC (Observer evaluates with its own LLM call)
-    - Loop until OVP approves or max_iterations reached
+    Original 2-SDNAC DUO pattern (poimandres + OVP).
+    Missing separate Ariadne archetype position.
 
-    Two SDNACs in a loop = SDNA^F (meta-optimization).
-
-    The OVP SDNAC must set in context:
-    - ovp_approved: bool - True to accept, False to retry
-    - ovp_feedback: str - Optional feedback for next iteration
-
-    Example:
-        # Target: generates code
-        target = sdnac('generate',
-            ariadne('prep', inject_file('spec.md', 'spec')),
-            HermesConfig(name='gen', goal='Generate code for {spec}')
-        )
-
-        # OVP: evaluates the output (has its own LLM call)
-        ovp = sdnac('evaluate',
-            ariadne('eval_prep', inject_literal('Evaluate the output', 'task')),
-            HermesConfig(name='evaluator', goal='Set ovp_approved=True if good, False if needs work')
-        )
-
-        # DUOAgent: loops until approved
-        duo = DUOAgent('code_gen', target, ovp, max_iterations=3)
-        result = await duo.execute({'project': 'myapp'})
+    The 'target' parameter is the Poimandres-typed SDNAC (does the work).
+    The 'ovp' parameter is the OVP-typed SDNAC (evaluates).
     """
 
     def __init__(
@@ -93,6 +87,11 @@ class DUOAgent:
         approval_key: str = "ovp_approved",
         feedback_key: str = "ovp_feedback",
     ):
+        warnings.warn(
+            "DUOAgent is deprecated. Use DUOChain or AutoDUOAgent from duo_chain.py instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.name = name
         self.target = target
         self.ovp = ovp
@@ -265,20 +264,8 @@ def duo_agent(
     max_iterations: int = 3,
 ) -> DUOAgent:
     """
-    Create a DUOAgent: Two SDNACs in refinement loop (SDNA^F).
+    DEPRECATED: Use duo_chain() or auto_duo_agent() from duo_chain.py instead.
 
-    Args:
-        name: Agent identifier
-        target: The target SDNAC (Poimandres does the work)
-        ovp: The OVP SDNAC (Observer evaluates with its own LLM call)
-        max_iterations: Maximum refinement iterations (default: 3)
-
-    Example:
-        agent = duo_agent('refiner',
-            sdnac('generate', ariadne('prep', ...), HermesConfig(...)),
-            sdnac('evaluate', ariadne('eval', ...), HermesConfig(goal='Set ovp_approved=True/False')),
-            max_iterations=5
-        )
-        result = await agent.execute(context)
+    Create a DUOAgent: Two SDNACs in refinement loop.
     """
     return DUOAgent(name, target, ovp, max_iterations)

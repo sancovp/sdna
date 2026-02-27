@@ -53,11 +53,23 @@ from .brain import Brain, BrainConfig, Neuron, CognitionResult
 from .sdna import (
     SDNAC, SDNAFlow, SDNAFlowchain,
     SDNAResult, SDNAStatus,
+    SDNAFlowchainResult, SDNAFlowchainStatus,
     SDNACConfig, OptimizerSDNACConfig, SDNAFlowConfig,
-    sdnac, sdna_flow,
+    sdnac, sdna_flow, sdna_flowchain,
 )
 from .duo import DUOAgent, DUOResult, DUOStatus, duo_agent
 from .duo_v2 import DuoAgentV2, DUOv2Result, DUOv2Status, duo_agent_v2
+from .duo_chain import (
+    DUOChain, DUOChainResult, DUOChainStatus,
+    PositionResult, PositionStatus, DUOPosition,
+    SDNACPosition, SDNACOVPPosition, PassthroughPosition, CallablePosition,
+    AutoDUOAgent,
+    duo_chain, auto_duo_agent,
+)
+from .orchestrated_duo_chain import (
+    OrchestratedDUOChain, OrchestratedDUOChainResult, OrchestratedDUOChainStatus,
+    orchestrated_duo_chain,
+)
 from .tags import extract_tags, match_tags, has_tag, tag_equals, tag_contains, ANY
 # code_agent removed - hooks now in CAVE
 from . import poimandres
@@ -125,11 +137,14 @@ __all__ = [
     "SDNAFlowchain",
     "SDNAResult",
     "SDNAStatus",
+    "SDNAFlowchainResult",
+    "SDNAFlowchainStatus",
     "SDNACConfig",
     "OptimizerSDNACConfig",
     "SDNAFlowConfig",
     "sdnac",
     "sdna_flow",
+    "sdna_flowchain",
     # DUO (refinement loop)
     "DUOAgent",
     "DUOResult",
@@ -140,6 +155,25 @@ __all__ = [
     "DUOv2Result",
     "DUOv2Status",
     "duo_agent_v2",
+    # DUOChain (abstract state machine)
+    "DUOChain",
+    "DUOChainResult",
+    "DUOChainStatus",
+    "PositionResult",
+    "PositionStatus",
+    "DUOPosition",
+    "SDNACPosition",
+    "SDNACOVPPosition",
+    "PassthroughPosition",
+    "CallablePosition",
+    "AutoDUOAgent",
+    "duo_chain",
+    "auto_duo_agent",
+    # OrchestratedDUOChain (external OVP pattern)
+    "OrchestratedDUOChain",
+    "OrchestratedDUOChainResult",
+    "OrchestratedDUOChainStatus",
+    "orchestrated_duo_chain",
     # Tags (extraction/matching)
     "extract_tags",
     "match_tags",

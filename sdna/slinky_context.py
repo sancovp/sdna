@@ -11,7 +11,9 @@ We replace the TEXT content, not the structure.
 """
 import json
 import hashlib
+import os
 import subprocess
+import uuid
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Callable
@@ -234,13 +236,38 @@ Summary: {summary}
         return concept_name
     
     def _call_carton_add(self, concept_name: str, description: str) -> None:
-        """Call Carton MCP to add concept.
-        
-        This is a placeholder - in production, use MCP client.
+        """Write concept directly to carton_queue/ for daemon processing.
+
+        Uses the same pattern as YOUKNOW's CartonMirror (owl_substrate.py):
+        write JSON to carton_queue/, background daemon picks it up and
+        processes into Neo4j + files. No MCP call needed.
         """
-        # For now, just track locally
-        # TODO: Actually call mcp_carton_add_concept
-        pass
+        heaven_data = os.environ.get("HEAVEN_DATA_DIR", "/tmp/heaven_data")
+        queue_dir = Path(heaven_data) / "carton_queue"
+        queue_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_id = str(uuid.uuid4())[:8]
+        queue_file = queue_dir / f"{timestamp}_{unique_id}_concept.json"
+
+        queue_data = {
+            "raw_concept": True,
+            "concept_name": concept_name,
+            "description": description,
+            "relationships": [
+                {"relationship": "is_a", "related": ["Slinky_Context_Store"]},
+                {"relationship": "part_of", "related": [f"Slinky_Session_{self.session_id[:8]}"]},
+                {"relationship": "instantiates", "related": ["Context_Compression_Ref"]},
+            ],
+            "desc_update_mode": "replace",
+            "hide_youknow": True,
+            "is_soup": False,
+            "soup_reason": None,
+            "source": "slinky_context_store",
+        }
+
+        with open(queue_file, "w") as f:
+            json.dump(queue_data, f, indent=2)
 
 
 class SlinkyCompressor:

@@ -210,62 +210,152 @@ class SDNAFlowConfig(BaseModel):
 
 
 # =============================================================================
-# SDNA^F (optimizer + target pairs)
+# SDNA^F (SDNAFlowchain = SDNAF + OVP evaluator loop)
 # =============================================================================
 
+class SDNAFlowchainStatus(str, Enum):
+    SUCCESS = "success"
+    MAX_CYCLES = "max_cycles"
+    BLOCKED = "blocked"
+    ERROR = "error"
+    AWAITING_INPUT = "awaiting_input"
+
+
+@dataclass
+class SDNAFlowchainResult:
+    status: SDNAFlowchainStatus
+    context: Dict[str, Any] = field(default_factory=dict)
+    cycles: int = 0
+    error: Optional[str] = None
+    ovp_feedback: Optional[str] = None
+
+
 class SDNAFlowchain:
-    """SDNA^F - optimizer + target pairs."""
+    """
+    SDNA^F — any SDNAF evaluated by an OVP SDNAC in a loop.
 
-    def __init__(self, name: str, pairs: List[Tuple[OptimizerSDNACConfig, SDNACConfig]]):
+    Structure:
+        loop (max_cycles):
+            run flow (SDNAF — N SDNACs in sequence)
+            OVP evaluates
+            if OVP approves: done
+        end loop
+
+    The flow is any SDNAFlow (or object with async execute(ctx) -> SDNAResult).
+    The OVP is an SDNAC that evaluates and sets approval in context.
+    The target is an optional goal string injected into context.
+
+    DUOChain extends this with A→P alternation as the flow.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        flow: SDNAFlow,
+        ovp: SDNAC,
+        target: Optional[str] = None,
+        max_cycles: int = 3,
+        approval_key: str = "ovp_approved",
+        feedback_key: str = "ovp_feedback",
+    ):
         self.name = name
-        self.pairs = pairs
+        self.flow = flow
+        self.ovp = ovp
+        self.target = target
+        self.max_cycles = max_cycles
+        self.approval_key = approval_key
+        self.feedback_key = feedback_key
 
-    async def execute(self, context: Optional[Dict[str, Any]] = None) -> SDNAResult:
+    async def _run_flow(self, ctx: Dict[str, Any]) -> SDNAResult:
+        """Run the inner flow. Override for custom flow patterns (e.g. DUOChain A→P)."""
+        return await self.flow.execute(ctx)
+
+    async def _evaluate(self, ctx: Dict[str, Any]) -> SDNAResult:
+        """Run OVP evaluation. Override for custom evaluation logic."""
+        return await self.ovp.execute(ctx)
+
+    def _check_approval(self, ctx: Dict[str, Any]) -> tuple:
+        """Extract approval and feedback from context. Returns (approved, feedback)."""
+        approved = ctx.get(self.approval_key)
+        if approved is None:
+            ovp_text = ctx.get("text", "").upper()
+            approved = "APPROVED" in ovp_text or "OVP_APPROVED: TRUE" in ovp_text
+            ctx[self.approval_key] = approved
+        feedback = ctx.get(self.feedback_key)
+        if feedback is None:
+            feedback = ctx.get("text", "")
+            ctx[self.feedback_key] = feedback
+        return bool(approved), feedback
+
+    async def execute(self, context: Optional[Dict[str, Any]] = None) -> SDNAFlowchainResult:
+        """
+        Run the SDNA^F loop: flow executes → OVP evaluates → loop or done.
+
+        Do-while semantics: runs at least one complete cycle.
+        """
         ctx = dict(context) if context else {}
-        # Implementation: run target, then optimizer reviews
-        # (Full implementation requires hydration from configs)
-        return SDNAResult(status=SDNAStatus.SUCCESS, context=ctx)
+        if self.target:
+            ctx["target"] = self.target
 
-    def to_graph(self) -> CompiledGraph:
-        """
-        Build LangGraph: optimizer + target pairs (meta-optimization).
+        for cycle in range(self.max_cycles):
+            ctx["flowchain_cycle"] = cycle + 1
 
-        Each pair runs: target → optimizer reviews → iterate or done.
-        """
-        graph = StateGraph(SDNAState)
+            # Run inner flow
+            flow_result = await self._run_flow(ctx)
+            ctx = flow_result.context
 
-        # For now, simple sequential execution of pairs
-        # Full implementation would have optimizer-driven iteration
-        node_names = []
-        for i, (optimizer_cfg, target_cfg) in enumerate(self.pairs):
-            target_name = f"pair_{i}_target"
-            optimizer_name = f"pair_{i}_optimizer"
-            node_names.extend([target_name, optimizer_name])
+            if flow_result.status != SDNAStatus.SUCCESS:
+                return SDNAFlowchainResult(
+                    status=_map_sdna_to_flowchain(flow_result.status),
+                    context=ctx,
+                    cycles=cycle + 1,
+                    error=flow_result.error,
+                )
 
-            # Placeholder nodes - full impl would hydrate configs
-            async def target_node(state: SDNAState) -> Dict[str, Any]:
-                return {"status": "success"}
+            # OVP evaluates
+            ctx["duo_evaluating"] = True
+            ovp_result = await self._evaluate(ctx)
+            ctx = ovp_result.context
+            ctx.pop("duo_evaluating", None)
 
-            async def optimizer_node(state: SDNAState) -> Dict[str, Any]:
-                return {"status": "success"}
+            if ovp_result.status != SDNAStatus.SUCCESS:
+                return SDNAFlowchainResult(
+                    status=_map_sdna_to_flowchain(ovp_result.status),
+                    context=ctx,
+                    cycles=cycle + 1,
+                    error=ovp_result.error,
+                )
 
-            graph.add_node(target_name, target_node)
-            graph.add_node(optimizer_name, optimizer_node)
+            # Check approval
+            approved, feedback = self._check_approval(ctx)
 
-        # Wire sequentially
-        if node_names:
-            graph.add_edge(START, node_names[0])
-            for i in range(len(node_names) - 1):
-                graph.add_edge(node_names[i], node_names[i + 1])
-            graph.add_edge(node_names[-1], END)
-        else:
-            async def passthrough(state: SDNAState) -> Dict[str, Any]:
-                return {"status": "success"}
-            graph.add_node("passthrough", passthrough)
-            graph.add_edge(START, "passthrough")
-            graph.add_edge("passthrough", END)
+            if approved:
+                return SDNAFlowchainResult(
+                    status=SDNAFlowchainStatus.SUCCESS,
+                    context=ctx,
+                    cycles=cycle + 1,
+                    ovp_feedback=feedback,
+                )
 
-        return graph.compile()
+            # Not approved — feedback for next cycle
+            if feedback:
+                ctx["ovp_feedback"] = feedback
+
+        return SDNAFlowchainResult(
+            status=SDNAFlowchainStatus.MAX_CYCLES,
+            context=ctx,
+            cycles=self.max_cycles,
+            ovp_feedback=ctx.get("ovp_feedback"),
+        )
+
+
+def _map_sdna_to_flowchain(status: SDNAStatus) -> SDNAFlowchainStatus:
+    """Map SDNAStatus to SDNAFlowchainStatus."""
+    return {
+        SDNAStatus.ERROR: SDNAFlowchainStatus.ERROR,
+        SDNAStatus.BLOCKED: SDNAFlowchainStatus.BLOCKED,
+        SDNAStatus.AWAITING_INPUT: SDNAFlowchainStatus.AWAITING_INPUT,
+    }.get(status, SDNAFlowchainStatus.ERROR)
 
 
 # =============================================================================
@@ -289,6 +379,26 @@ def sdnac(name: str, ariadne: AriadneChain, config: HermesConfig) -> SDNAC:
         result = await unit.execute({'initial': 'context'})
     """
     return SDNAC(name, ariadne, config)
+
+
+def sdna_flowchain(
+    name: str,
+    flow: SDNAFlow,
+    ovp: SDNAC,
+    target: Optional[str] = None,
+    max_cycles: int = 3,
+) -> SDNAFlowchain:
+    """
+    Create an SDNA^F: SDNAF + OVP evaluator in a loop.
+
+    Args:
+        name: Flowchain identifier
+        flow: SDNAFlow (N SDNACs in sequence) — the inner flow
+        ovp: OVP-type SDNAC that evaluates and approves/rejects
+        target: Optional goal string injected into context
+        max_cycles: Maximum OVP evaluation cycles (default: 3)
+    """
+    return SDNAFlowchain(name, flow, ovp, target=target, max_cycles=max_cycles)
 
 
 def sdna_flow(name: str, *sdnacs: SDNAC) -> SDNAFlow:
