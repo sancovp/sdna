@@ -180,6 +180,18 @@ async def heaven_agent_step(
 
     prompt = config.resolve_goal(merged_inputs)
 
+    # Wire history_id from context (previous SDNAC output) into config for continuation.
+    # When an SDNAC executes, its output includes history_id which lands in ctx.
+    # The next SDNAC in a flow/chain receives that ctx as variable_inputs.
+    # If config doesn't already have a history_id set, use the one from context.
+    # This enables conversation continuation across SDNACs in flows and DUOChain cycles.
+    ctx_history_id = merged_inputs.get("history_id")
+    if ctx_history_id:
+        if config.heaven_inputs is None:
+            config.heaven_inputs = HeavenInputs()
+        if not config.heaven_inputs.hermes.history_id:
+            config.heaven_inputs.hermes.history_id = ctx_history_id
+
     # Resolve agent: use pre-built heaven_agent if provided, otherwise build from inputs
     if config.heaven_agent is not None:
         agent = config.heaven_agent
