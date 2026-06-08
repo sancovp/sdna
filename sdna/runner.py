@@ -47,6 +47,7 @@ class StepResult:
 async def agent_step(
     config: Union[HermesConfig, Dict[str, Any]],
     variable_inputs: Optional[Dict[str, Any]] = None,
+    on_message=None,
 ) -> StepResult:
     """
     Execute a single agent step using claude-agent-sdk.
@@ -97,6 +98,13 @@ async def agent_step(
     try:
         async for message in query(prompt=prompt, options=options):
             result.messages.append(message)
+
+            # Fire callback if provided
+            if on_message is not None:
+                try:
+                    await on_message(message)
+                except Exception:
+                    pass  # Never let callback errors kill the agent
 
             # Extract session ID
             if hasattr(message, 'session_id'):

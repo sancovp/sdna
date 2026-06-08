@@ -57,6 +57,10 @@ from .sdna import (
     SDNACConfig, OptimizerSDNACConfig, SDNAFlowConfig,
     sdnac, sdna_flow, sdna_flowchain,
 )
+from .chain_ontology import (
+    Link, Chain, EvalChain, ConfigLink, LinkConfig,
+    LinkResult, LinkStatus,
+)
 from .duo import DUOAgent, DUOResult, DUOStatus, duo_agent
 from .duo_v2 import DuoAgentV2, DUOv2Result, DUOv2Status, duo_agent_v2
 from .duo_chain import (
@@ -74,6 +78,8 @@ from .tags import extract_tags, match_tags, has_tag, tag_equals, tag_contains, A
 # code_agent removed - hooks now in CAVE
 from . import poimandres
 from .defaults import get_default_mcp_servers, get_default_hermes_config, default_config
+from .cron import CronJob, CronScheduler, DeliveryTarget, DeliveryType, SessionTarget
+from .selfbot import SelfBot, get_tmux_session
 
 __all__ = [
     # State (LangGraph substrate)
@@ -145,6 +151,14 @@ __all__ = [
     "sdnac",
     "sdna_flow",
     "sdna_flowchain",
+    # Chain Ontology (universal homoiconic base)
+    "Link",
+    "Chain",
+    "EvalChain",
+    "ConfigLink",
+    "LinkConfig",
+    "LinkResult",
+    "LinkStatus",
     # DUO (refinement loop)
     "DUOAgent",
     "DUOResult",
@@ -218,4 +232,13 @@ __all__ = [
     "start_slinky",
     "stop_slinky",
     "get_slinky_status",
+    # Cron (scheduled execution with delivery)
+    "CronJob",
+    "CronScheduler",
+    "DeliveryTarget",
+    "DeliveryType",
+    "SessionTarget",
+    # SelfBot (tmux agent control)
+    "SelfBot",
+    "get_tmux_session",
 ]

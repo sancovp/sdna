@@ -1,5 +1,17 @@
 # SDNA - Sanctuary DNA
 
+<!-- SCALABLE-PUBLISHING:AUTOGEN START (managed block — do not edit between these markers) -->
+
+![Stars](https://img.shields.io/github/stars/sancovp/sdna.svg?style=social) ![Updated](https://img.shields.io/badge/updated-2026_02_27-lightgrey.svg)
+
+⭐ 0 stars • 🕑 Updated 2026-02-27
+
+[Marketplace](https://github.com/sancovp/sancrev-marketplace) • [Docs](https://sancovp.github.io/aisaac/)
+
+📦 Auto-published from the monorepo • [CHANGELOG](./CHANGELOG.md) • [sancovp/sdna](https://github.com/sancovp/sdna)
+
+<!-- SCALABLE-PUBLISHING:AUTOGEN END -->
+
 Gnostic agent workflow composition for Claude Agent SDK.
 
 **Ariadne** (threading) + **Poimandres** (generation) = **SDNA** spiral

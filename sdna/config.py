@@ -41,9 +41,21 @@ class HeavenAgentArgs(BaseModel):
     tools: List[Any] = Field(default_factory=list)  # Heaven tools (BaseHeavenTool subclasses or MCP strings)
     extra_model_kwargs: Optional[Dict[str, Any]] = None  # Set by adaptor if None: anthropic_api_url + default_headers
     use_uni_api: bool = False  # False = ChatAnthropic path (required for MiniMax anthropic_api_url)
+    duo_enabled: bool = False  # DUO challenger sidechain — always off unless explicitly enabled
+    enable_compaction: bool = False  # Enable auto-compaction when transcript exceeds threshold
     # HEAVEN extraction: capture fenced/XML blocks into agent_status.extracted_content
     additional_kws: List[str] = Field(default_factory=list)
     additional_kw_instructions: str = ""
+    # HeavenAgentConfig fields — first-class so callers don't need extra_agent_kwargs
+    skillset: Optional[str] = None  # Skillset name for per-agent skill injection
+    persona: Optional[str] = None  # Persona name — resolves frame, skillset, mcp_set, carton_identity
+    hook_registry: Optional[Any] = None  # HookRegistry instance for lifecycle hooks
+    carton_identity: Optional[str] = None  # CartON identity for agent observations
+    mcp_set: Optional[str] = None  # MCP set name from strata
+    state_machine: Optional[Any] = None  # State machine config
+    min_sm_cycles: Optional[int] = None  # Minimum state machine cycles
+    # Pass-through: any OTHER field HeavenAgentConfig accepts
+    extra_agent_kwargs: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -105,6 +117,11 @@ class HermesConfig(BaseModel):
     # Heaven-specific inputs: agent config args + hermes config args.
     # Used by heaven_runner.py to build HeavenAgentConfig and Heaven HermesConfig.
     heaven_inputs: Optional[HeavenInputs] = None
+
+    # Cross-container execution: if set, Hermes routes via Docker exec to this container.
+    # Empty string = local execution (default). Set to e.g. "repo-lord" for remote.
+    target_container: str = ""
+    source_container: str = ""
 
     # Brain integration
     brain_query: Optional[str] = None
@@ -320,12 +337,44 @@ class DovetailModel(BaseModel):
 
     Declares expected outputs from previous step and
     how to map them to inputs for the next step.
+
+    file_inputs: Load files into context before extraction.
+        Maps context key to file path. Files are loaded as:
+        - dict if valid JSON
+        - str (full contents) if not JSON and <= 10k chars
+        - str "You must read {path} before continuing" if > 10k chars
     """
     name: str = ""
     expected_outputs: List[str] = Field(default_factory=list)
     input_map: Dict[str, HermesConfigInput] = Field(default_factory=dict)
+    file_inputs: Dict[str, str] = Field(default_factory=dict)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    FILE_INLINE_LIMIT: int = 10_000
+
+    def _load_file_inputs(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Load file_inputs into context. JSON parsed to dict, else str or read pointer."""
+        import json as _json
+        from pathlib import Path as _Path
+
+        ctx = dict(context)
+        for key, file_path in self.file_inputs.items():
+            p = _Path(file_path)
+            if not p.exists():
+                ctx[key] = None
+                continue
+            raw = p.read_text()
+            try:
+                ctx[key] = _json.loads(raw)
+                continue
+            except (_json.JSONDecodeError, ValueError):
+                pass
+            if len(raw) <= self.FILE_INLINE_LIMIT:
+                ctx[key] = raw
+            else:
+                ctx[key] = f"You must read {file_path} before continuing"
+        return ctx
 
     def validate_outputs(self, result: Dict[str, Any]) -> List[str]:
         """Check expected outputs are present. Returns missing keys."""
@@ -343,13 +392,15 @@ class DovetailModel(BaseModel):
         return missing
 
     def prepare_next_inputs(self, previous_result: Dict[str, Any]) -> Dict[str, Any]:
-        """Transform previous outputs into next step inputs."""
-        missing = self.validate_outputs(previous_result)
+        """Load file_inputs into context, then extract via input_map."""
+        enriched = self._load_file_inputs(previous_result)
+
+        missing = self.validate_outputs(enriched)
         if missing:
             raise ValueError(f"Dovetail '{self.name}' missing outputs: {missing}")
 
         next_inputs = {}
         for input_name, input_spec in self.input_map.items():
-            next_inputs[input_name] = input_spec.extract(previous_result)
+            next_inputs[input_name] = input_spec.extract(enriched)
 
         return next_inputs

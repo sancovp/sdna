@@ -1669,6 +1669,7 @@ def equip_frame(frame: str) -> str:
     """
     try:
         # Get frames path from env or use default
+        # CONNECTS_TO: /tmp/heaven_data/carton_frames.json (read) — also accessed by server_fastmcp.py
         frames_path = os.getenv('CARTON_FRAMES_PATH', '/tmp/heaven_data/carton_frames.json')
         frames_file = Path(frames_path)
 
@@ -1792,6 +1793,7 @@ def add_frame(frame_name: str, description: str) -> str:
     Returns:
         Prompt instructing LLM to add frame to frames file
     """
+    # CONNECTS_TO: /tmp/heaven_data/carton_frames.json (read/write) — also accessed by server_fastmcp.py
     frames_path = os.getenv('CARTON_FRAMES_PATH', '/tmp/heaven_data/carton_frames.json')
 
     return f"""[ADD FRAME MODE]

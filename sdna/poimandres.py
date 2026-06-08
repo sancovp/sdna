@@ -30,6 +30,7 @@ class PoimandresResult:
 async def execute(
     config: HermesConfig,
     context: Optional[Dict[str, Any]] = None,
+    on_message=None,
 ) -> PoimandresResult:
     """
     The generation moment - Poimandres executes.
@@ -50,7 +51,7 @@ async def execute(
     try:
         if config.backend == "heaven":
             from .heaven_runner import heaven_agent_step
-            step_result = await heaven_agent_step(config, ctx)
+            step_result = await heaven_agent_step(config, ctx, on_message=on_message)
         else:
             if not os.environ.get("SDNA_ALLOW_CLAUDE_SDK"):
                 warnings.warn(
@@ -60,7 +61,7 @@ async def execute(
                     stacklevel=2,
                 )
             from .runner import agent_step
-            step_result = await agent_step(config, ctx)
+            step_result = await agent_step(config, ctx, on_message=on_message)
 
         if step_result.status == StepStatus.BLOCKED:
             return PoimandresResult(

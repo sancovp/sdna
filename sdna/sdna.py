@@ -21,6 +21,7 @@ from .config import HermesConfig
 from .ariadne import AriadneChain, AriadneResult, AriadneStatus
 from .state import SDNAState, initial_state
 from . import poimandres
+from .chain_ontology import Link, Chain, EvalChain, LinkStatus, LinkResult
 
 
 # =============================================================================
@@ -48,9 +49,11 @@ class SDNAResult:
 # SDNAC (Ariadne → HermesConfig → Poimandres)
 # =============================================================================
 
-class SDNAC:
+class SDNAC(Link):
     """
     Single SDNAC unit: AriadneChain preps context, then Poimandres executes config.
+
+    Inherits from Link — SDNAC IS the atomic unit of execution.
     """
 
     def __init__(self, name: str, ariadne: AriadneChain, config: HermesConfig):
@@ -58,7 +61,7 @@ class SDNAC:
         self.ariadne = ariadne
         self.config = config
 
-    async def execute(self, context: Optional[Dict[str, Any]] = None) -> SDNAResult:
+    async def execute(self, context: Optional[Dict[str, Any]] = None, on_message=None) -> SDNAResult:
         ctx = dict(context) if context else {}
 
         # Ariadne preps the thread
@@ -76,7 +79,7 @@ class SDNAC:
             return SDNAResult(status=SDNAStatus.ERROR, context=ctx, error=ariadne_result.error)
 
         # Poimandres generates
-        poimandres_result = await poimandres.execute(self.config, ctx)
+        poimandres_result = await poimandres.execute(self.config, ctx, on_message=on_message)
 
         if poimandres_result.blocked:
             return SDNAResult(status=SDNAStatus.BLOCKED, context=ctx)
@@ -118,17 +121,27 @@ class SDNAC:
 
         return graph.compile()
 
+    def describe(self, depth: int = 0) -> str:
+        indent = "  " * depth
+        model = getattr(self.config, 'model', '') or ''
+        return f'{indent}SDNAC "{self.name}" [model={model}]'
+
 
 # =============================================================================
 # SDNAF (flow of SDNACs)
 # =============================================================================
 
-class SDNAFlow:
-    """SDNAF - Flow of SDNACs."""
+class SDNAFlow(Chain):
+    """SDNAF - Flow of SDNACs.
+
+    Inherits from Chain — SDNAFlow IS a sequence of Links.
+    The homoiconic property means an SDNAFlow can be a Link
+    inside another SDNAFlow or any Chain.
+    """
 
     def __init__(self, name: str, sdnacs: List[SDNAC]):
-        self.name = name
-        self.sdnacs = sdnacs
+        super().__init__(chain_name=name, links=sdnacs)
+        self.sdnacs = sdnacs  # backward compat alias
 
     async def execute(self, context: Optional[Dict[str, Any]] = None) -> SDNAResult:
         ctx = dict(context) if context else {}
@@ -230,9 +243,11 @@ class SDNAFlowchainResult:
     ovp_feedback: Optional[str] = None
 
 
-class SDNAFlowchain:
+class SDNAFlowchain(EvalChain):
     """
     SDNA^F — any SDNAF evaluated by an OVP SDNAC in a loop.
+
+    Inherits from EvalChain — SDNAFlowchain IS a Chain with an evaluator.
 
     Structure:
         loop (max_cycles):
@@ -258,12 +273,18 @@ class SDNAFlowchain:
         approval_key: str = "ovp_approved",
         feedback_key: str = "ovp_feedback",
     ):
-        self.name = name
-        self.flow = flow
-        self.ovp = ovp
+        # EvalChain wants (chain_name, links, evaluator, max_cycles, approval_key)
+        # flow can be None when subclass overrides _run_flow (e.g. DUOChain)
+        super().__init__(
+            chain_name=name,
+            links=flow.sdnacs if flow is not None else [],
+            evaluator=ovp,
+            max_cycles=max_cycles,
+            approval_key=approval_key,
+        )
+        self.flow = flow  # backward compat
+        self.ovp = ovp    # backward compat
         self.target = target
-        self.max_cycles = max_cycles
-        self.approval_key = approval_key
         self.feedback_key = feedback_key
 
     async def _run_flow(self, ctx: Dict[str, Any]) -> SDNAResult:
