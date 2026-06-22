@@ -2,9 +2,9 @@
 
 <!-- SCALABLE-PUBLISHING:AUTOGEN START (managed block — do not edit between these markers) -->
 
-![License](https://img.shields.io/badge/license-Other-blue.svg) ![Stars](https://img.shields.io/github/stars/sancovp/sdna.svg?style=social) ![Updated](https://img.shields.io/badge/updated-2026_06_20-lightgrey.svg)
+![License](https://img.shields.io/badge/license-Other-blue.svg) ![Stars](https://img.shields.io/github/stars/sancovp/sdna.svg?style=social) ![Updated](https://img.shields.io/badge/updated-2026_06_21-lightgrey.svg)
 
-⭐ 0 stars • 🕑 Updated 2026-06-20
+⭐ 0 stars • 🕑 Updated 2026-06-21
 
 📦 Auto-published from the monorepo • [CHANGELOG](./CHANGELOG.md) • [sancovp/sdna](https://github.com/sancovp/sdna)
 
