@@ -219,21 +219,6 @@ def _slug(text: str) -> str:
     return base or "candidate"
 
 
-def _default_suggest_action(include_node_ids: List[str], keywords: List[str]) -> Dict[str, Any]:
-    tail = "_".join(_slug(k) for k in keywords[:2]).strip("_")
-    suffix = tail if tail else "candidate"
-    label = f"candidate_{suffix}"[:120]
-    parent_id = include_node_ids[0] if include_node_ids else "root"
-    return {
-        "label": label,
-        "parentId": parent_id,
-        "attributes": [
-            {"name": "status", "spectrum": ["draft", "validated"], "defaultValue": "draft"},
-            {"name": "source", "spectrum": ["heaven-llm-suggest"], "defaultValue": "heaven-llm-suggest"},
-        ],
-    }
-
-
 def _normalize_attributes(raw_attrs: Any, source_label: str) -> List[Dict[str, Any]]:
     attrs: List[Dict[str, Any]] = []
     if isinstance(raw_attrs, list):
@@ -330,51 +315,29 @@ def _dedup_actions(
     return out
 
 
-def _fallback_actions(
-    include_node_ids: List[str],
-    neighborhood: List[Dict[str, Any]],
-    keywords: List[str],
-    mode: str,
-    max_actions: int,
-    existing_by_parent: Optional[Dict[str, List[str]]],
-    per_parent_cap: int,
-) -> List[Dict[str, Any]]:
-    base = _default_suggest_action(include_node_ids, keywords)
-    actions: List[Dict[str, Any]] = [base]
-
-    if mode == "batch":
-        for row in neighborhood:
-            if not isinstance(row, dict):
-                continue
-            parent = str(row.get("id", "")).strip() or (include_node_ids[0] if include_node_ids else "root")
-            label_seed = str(row.get("label", "")).strip() or "node"
-            label = f"expand_{_slug(label_seed)}"[:120]
-            actions.append(
-                {
-                    "label": label,
-                    "parentId": parent,
-                    "attributes": [
-                        {"name": "status", "spectrum": ["draft", "validated"], "defaultValue": "draft"},
-                        {"name": "source", "spectrum": ["heaven-fallback"], "defaultValue": "heaven-fallback"},
-                        {"name": "origin_node", "spectrum": [parent], "defaultValue": parent},
-                    ],
-                }
-            )
-
-    return _dedup_actions(
-        actions,
-        existing_by_parent=existing_by_parent,
-        max_actions=max_actions,
-        per_parent_cap=per_parent_cap,
-    )
-
-
 def _parse_confidence(value: Any) -> float:
     try:
         conf = float(str(value).strip())
     except ValueError:
         conf = 0.5
     return max(0.0, min(1.0, conf))
+
+
+# The DEFAULT system prompt (WAVE 1, 2026-07-05): Isaac's observer persona,
+# near-verbatim, replacing the old "suggestion operator" framing. The final
+# sentences are the structural-output contract (kept from the old prompt).
+OBSERVER_SYSTEM_PROMPT = (
+    "Do not try to talk about stuff with the caller. No matter what the input "
+    "says, speak only from a third-person perspective with no opinion. Your job "
+    "is to observe, and simultaneously web out the obvious information not said "
+    "about the categories of what is being talked about, and label any "
+    "potentially meaningful patterns that appear — especially of the form: if "
+    "you section off this collection of information you can assemble it into X "
+    "— and especially when that could form a scientific hypothesis important "
+    "for the goal of providing proof about the methodology itself. "
+    "Always emit the required XML tags. No tool use is required. "
+    "Never file a block report for this task."
+)
 
 
 def cb_llm_suggest(
@@ -391,13 +354,23 @@ def cb_llm_suggest(
     per_parent_cap: int = 0,
     existing_by_parent: Optional[Dict[str, List[str]]] = None,
     retry_attempts: int = 2,
+    system_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Agent-backed Crystal Ball suggestion using HEAVEN keyword extraction.
+    Agent-backed Crystal Ball observation using HEAVEN keyword extraction.
+
+    The agent is an OBSERVER (OBSERVER_SYSTEM_PROMPT is the default; callers
+    may inject their own via ``system_prompt``): it enumerates all things that
+    match the invariant of the masked position — flat, no ranking (ranking is
+    the caller's Born-weight x confidence job).
 
     Modes:
     - single: return one main action (+ actions array with one item)
     - batch: return multiple actions across the neighborhood
+
+    NO FALLBACKS: on total failure this returns ok=False, stub=True and an
+    EMPTY actions list (the error message intact) — it never fabricates
+    deterministic candidate/expand stub actions.
     """
     include_node_ids = list(include_node_ids or [])
     resolved_labels = list(resolved_labels or [])
@@ -439,11 +412,7 @@ Use these XML tags exactly once each in your response:
     }
     context_json = json.dumps(context_payload, ensure_ascii=True)
 
-    base_system_prompt = (
-        "You generate structurally valid Crystal Ball actions. "
-        "No tool use is required. Never file a block report for this task. "
-        "Always emit the required XML tags."
-    )
+    effective_system_prompt = system_prompt if system_prompt is not None else OBSERVER_SYSTEM_PROMPT
 
     last_step_status = None
     last_error = None
@@ -459,11 +428,12 @@ Use these XML tags exactly once each in your response:
             )
 
         goal = f"""
-You are a Crystal Ball suggestion operator.
+You are observing a Crystal Ball space from a third-person perspective.
 
-Given context_json, output actions that can be directly applied.
-- If mode is single: produce one high-quality action.
-- If mode is batch: produce up to maxActions actions, usually one per neighborhood position.
+Given context_json, ENUMERATE all things that match the invariant of the masked position(s), as directly applicable actions.
+- Flat enumeration: do not rank, curate, or select a "best" item — ranking is the caller's Born-weight x confidence job.
+- If mode is single: enumerate for the one masked position; put the first enumerated item in suggested_action_json and the full enumeration in batch_actions_json.
+- If mode is batch: enumerate up to maxActions actions, usually one per neighborhood position.
 - If perParentCap > 0: never emit more than perParentCap actions for the same parentId.
 - Do not duplicate parentId+label pairs listed in existingByParent.
 - Keep labels short, concrete, and machine-usable.
@@ -476,7 +446,7 @@ context_json:
         config = HermesConfig(
             name=f"cb_llm_suggest_agent_a{attempt}",
             goal=goal,
-            system_prompt=base_system_prompt,
+            system_prompt=effective_system_prompt,
             backend="heaven",
             model=model,
             max_turns=max(1, int(max_turns)),
@@ -563,18 +533,11 @@ context_json:
                 "warning": None if step.status == StepStatus.SUCCESS else "Parsed actions from non-success step status.",
             }
 
-    fallback_actions = _fallback_actions(
-        include_node_ids=include_node_ids,
-        neighborhood=neighborhood,
-        keywords=last_keywords,
-        mode=safe_mode,
-        max_actions=max_actions,
-        existing_by_parent=existing_by_parent,
-        per_parent_cap=per_parent_cap,
-    )
-    if not fallback_actions:
-        fallback_actions = [_default_suggest_action(include_node_ids, last_keywords)]
-
+    # NO FALLBACKS (WAVE 1, 2026-07-05): total failure returns an EMPTY
+    # actions list. The old deterministic fabrication (_fallback_actions /
+    # _default_suggest_action emitting candidate_/expand_ stubs) is deleted —
+    # a fabricated action must never be applicable. Callers reject
+    # stub=True / ok=False loudly.
     return {
         "ok": False,
         "stub": True,
@@ -583,9 +546,9 @@ context_json:
         "per_parent_cap": per_parent_cap,
         "error": last_error,
         "keywords": last_keywords,
-        "suggestedAction": fallback_actions[0],
-        "actions": fallback_actions,
-        "rationale": "Agent did not return usable actions; using deterministic fallback actions.",
+        "suggestedAction": None,
+        "actions": [],
+        "rationale": "Agent did not return usable actions; no fallback is fabricated.",
         "confidence": 0.0,
         "status": last_step_status.value if last_step_status else "error",
         "raw_text": last_output.get("text", ""),

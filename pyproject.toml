@@ -23,9 +23,14 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "pydantic==2.10.6",
+    "pydantic>=2.10.6,<3",
     "anthropic==0.97.0",
     "langgraph==0.2.60",
+    # chain_ontology.py imports `uco` — the DISTRIBUTION is universal-chain-ontology
+    # (github sancovp/universal-chain-ontology). NEVER `pip install uco`: that PyPI
+    # name is squatted by an unrelated placeholder. This was an UNDECLARED import
+    # (found 2026-07-10 when the promptworld image crashed on it).
+    "universal-chain-ontology>=0.1.0",
 ]
 
 [project.optional-dependencies]
