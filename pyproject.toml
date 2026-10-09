@@ -38,6 +38,18 @@ dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
 ]
+# sdna.selfbot_extensions — GUI automation + the procedure->SDK compiler.
+# Kept OUT of the base dependencies on purpose: `pip install sanctuary-dna`
+# is a DSL install and must not drag in a browser stack. See
+# sdna/selfbot_extensions/DESIGN.md.
+selfbot = [
+    "jinja2>=3.0",      # the codegen templates (automation + procedure)
+    "pillow>=10.0",     # virtual_screen screenshots
+]
+browser = [
+    "sanctuary-dna[selfbot]",
+    "playwright>=1.40", # the PlaywrightDriver behind the PageDriver protocol
+]
 
 [project.urls]
 Homepage = "https://github.com/sancovp/sdna"

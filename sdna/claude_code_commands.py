@@ -15,6 +15,7 @@ Usage:
 """
 
 import re
+import os
 import subprocess
 import time
 from typing import Optional, List, TYPE_CHECKING, Union
@@ -477,7 +478,7 @@ def slinky_compress_and_restart(
         time.sleep(timeout_exit)
 
     # Step 2: Archive transcript before compression
-    archive_dir = Path("/tmp/heaven_data/claude_code/sessions") / datetime.now().strftime("%Y%m%dT%H%M%S")
+    archive_dir = Path(os.environ.get("HEAVEN_DATA_DIR", "/tmp/heaven_data")) / "claude_code" / "sessions" / datetime.now().strftime("%Y%m%dT%H%M%S")
     archive_dir.mkdir(parents=True, exist_ok=True)
     archive_path = archive_dir / Path(transcript_path).name
     shutil.copy2(transcript_path, archive_path)
