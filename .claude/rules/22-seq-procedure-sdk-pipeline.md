@@ -7,7 +7,7 @@ REHYDRATION (read these, in this order, before working this feature):[
 4. `base/sdna/sdna/selfbot_extensions/application/sdk_builder.py` — the pipeline surface
 5. `base/sdna/sdna/selfbot_extensions/application/immune.py` — the sweep that prevents silent rot
 6. `base/sdna/tests/test_selfbot_extensions_pipeline.py` — every law has a test; read them as the spec
-7. `base/sdna/.claude/rules/selfbot_extensions_states.md` — what is open
+7. `base/sdna/sdna/selfbot_extensions/.claude/rules/selfbot_extensions_states.md` — what is open
 ]
 NOT:[read the whole train doc for this feature — this list is the scoped set]
 
