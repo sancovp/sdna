@@ -245,6 +245,10 @@ code *executing* is proven in CI).
 
 - **No site has been instantiated.** The layer is complete and the first real
   procedure has not been recorded. Nothing is verified against a live site.
+- **A site is driven only where its terms allow it** — read them before the first
+  procedure is recorded. Never the business system's web app (GoHighLevel): its
+  Code of Conduct forbids any robot or automatic means of accessing its platform
+  (`not-unified/business-runtime/research/ghl.md` § HIGHLEVEL'S TERMS ON AUTOMATION).
 - **Persistent authenticated profiles** — log in once by hand, agent inherits
   the session. This is the practical answer to CAPTCHA friction (established
   sessions do not trigger challenges the way fresh suspicious logins do) and is
