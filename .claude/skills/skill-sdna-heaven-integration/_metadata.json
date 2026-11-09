@@ -1,0 +1,8 @@
+{
+  "domain": "Sdna",
+  "subdomain": "Heaven_Integration",
+  "category": "understand",
+  "what": "'''How HermesConfig fields map to HeavenAgentConfig+HeavenHermesConfig",
+  "when": "'''When creating any SDNAC/SDNAFlow that needs to execute via Heaven backend on MiniMax or Anthropic'''",
+  "produces": "Runnable_Sdna_Agent"
+}
