@@ -13,7 +13,7 @@
       "name": "sdna",
       "source": "./",
       "description": "SDNA Plugin - Gnostic agent workflow DSL with skills for chain development",
-      "version": "0.3.2",
+      "version": "0.3.7",
       "author": {
         "name": "Isaac Wostrel-Rubin",
         "email": "isaac@sanctuary.systems"
