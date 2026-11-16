@@ -24,6 +24,7 @@ Usage:
 
 import json
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -33,6 +34,63 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# SCHEDULE TIMEZONE — cron expressions are wall-clock in a CONFIGURED timezone
+# =============================================================================
+# THE BUG THIS FIXES (2026-07-17, sanctuary-revolution-alpha issue #41): schedules
+# are AUTHORED as wall-clock times in the operator's timezone (cave writes them via
+# Clock.from_config(), e.g. America/New_York), but evaluation used naive
+# datetime.now() = container-local time (UTC in this container) — so every cron
+# fired 4 hours early in the operator's terms. Evaluation must happen in the SAME
+# timezone the schedule was authored in.
+#
+# Configuration (first match wins):
+#   1. set_timezone("America/New_York")  — the consumer wires it (cave automation.py
+#      does this from Clock.from_config() at import).
+#   2. env SDNA_CRON_TZ                  — for direct sdna users / subprocesses.
+#   3. none                              — naive local time, the pre-fix behavior.
+
+_CRON_TZ = None
+
+
+def set_timezone(tz_name: Optional[str]) -> None:
+    """Set the timezone cron expressions are evaluated in (None = naive local)."""
+    global _CRON_TZ
+    if not tz_name:
+        _CRON_TZ = None
+        return
+    from zoneinfo import ZoneInfo
+    _CRON_TZ = ZoneInfo(tz_name)
+    logger.info("sdna.cron: schedule timezone set to %s", tz_name)
+
+
+def get_timezone():
+    """The active schedule ZoneInfo (env-bootstrapped on first read), or None."""
+    global _CRON_TZ
+    if _CRON_TZ is None:
+        env_tz = os.environ.get("SDNA_CRON_TZ", "")
+        if env_tz:
+            set_timezone(env_tz)
+    return _CRON_TZ
+
+
+def _now() -> datetime:
+    """Now, in the schedule timezone (aware) — or naive local when unconfigured."""
+    tz = get_timezone()
+    return datetime.now(tz) if tz else datetime.now()
+
+
+def _coerce(dt: datetime) -> datetime:
+    """Bring a stored datetime into the active evaluation regime. A NAIVE stamp
+    (recorded as container-local time, pre-config or pre-fix) is interpreted as
+    local and converted when a timezone is active; aware stamps convert directly;
+    with no timezone active, aware stamps are flattened to naive local."""
+    tz = get_timezone()
+    if tz:
+        return dt.astimezone(tz)          # naive => assumed local, then converted
+    return dt if dt.tzinfo is None else dt.astimezone().replace(tzinfo=None)
 
 
 # =============================================================================
@@ -142,7 +200,7 @@ class CronJob:
         that behavior is unchanged.
         """
         if self.last_run is None and not self.is_interval:
-            self.last_run = datetime.now()
+            self.last_run = _now()
 
     @property
     def is_interval(self) -> bool:
@@ -161,19 +219,21 @@ class CronJob:
         if not self.enabled:
             return False
 
-        now = datetime.now()
+        # Evaluate in the SCHEDULE timezone (see set_timezone above) — cron exprs
+        # mean wall-clock in the authoring tz, never bare container-local time.
+        now = _now()
 
         if self.is_interval:
             seconds = self.interval_seconds
             if self.last_run is None:
                 return True
-            elapsed = (now - self.last_run).total_seconds()
+            elapsed = (now - _coerce(self.last_run)).total_seconds()
             return elapsed >= seconds
 
         # Cron expression
         try:
             from croniter import croniter
-            base = self.last_run or now
+            base = _coerce(self.last_run) if self.last_run else now
             cron_iter = croniter(self.schedule, base)
             next_run = cron_iter.get_next(datetime)
             return now >= next_run
@@ -183,7 +243,7 @@ class CronJob:
 
     def mark_run(self):
         """Mark this job as having run."""
-        self.last_run = datetime.now()
+        self.last_run = _now()
         self.run_count += 1
 
     def to_dict(self) -> dict:

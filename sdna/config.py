@@ -31,7 +31,7 @@ class HeavenAgentArgs(BaseModel):
 
     Defaults target MiniMax via Anthropic-compatible API:
     - provider=ANTHROPIC, use_uni_api=False → ChatAnthropic path
-    - extra_model_kwargs carries anthropic_api_url + default_headers for MiniMax auth
+    - extra_model_kwargs None → heaven_runner sets anthropic_api_url to MiniMax; heaven resolves the key
     - Model default: MiniMax-M2.5-highspeed
     """
     provider: str = "ANTHROPIC"
@@ -39,7 +39,7 @@ class HeavenAgentArgs(BaseModel):
     max_tokens: int = 8000
     thinking_budget: Optional[int] = None
     tools: List[Any] = Field(default_factory=list)  # Heaven tools (BaseHeavenTool subclasses or MCP strings)
-    extra_model_kwargs: Optional[Dict[str, Any]] = None  # Set by adaptor if None: anthropic_api_url + default_headers
+    extra_model_kwargs: Optional[Dict[str, Any]] = None  # Set by adaptor if None: anthropic_api_url
     use_uni_api: bool = False  # False = ChatAnthropic path (required for MiniMax anthropic_api_url)
     duo_enabled: bool = False  # DUO challenger sidechain — always off unless explicitly enabled
     enable_compaction: bool = False  # Enable auto-compaction when transcript exceeds threshold
@@ -54,6 +54,9 @@ class HeavenAgentArgs(BaseModel):
     mcp_set: Optional[str] = None  # MCP set name from strata
     state_machine: Optional[Any] = None  # State machine config
     min_sm_cycles: Optional[int] = None  # Minimum state machine cycles
+    # BaseHeavenAgent constructor argument, not a HeavenAgentConfig field: tool calls per iteration
+    # (heaven's default is 10). heaven_runner passes it as agent_constructor_kwargs.
+    max_tool_calls: Optional[int] = None
     # Pass-through: any OTHER field HeavenAgentConfig accepts
     extra_agent_kwargs: Dict[str, Any] = Field(default_factory=dict)
 

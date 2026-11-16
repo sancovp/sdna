@@ -1,3 +1,8 @@
+---
+name: understand-sdna
+description: "WHAT: explain the SDNA agent workflow language on LangGraph. WHEN: you are building typed agent workflows or integrating LangGraph."
+---
+
 # understand-sdna
 
 **WHAT:** Gnostic agent workflow DSL with LangGraph as native execution substrate. Ariadne (threading) + Poimandres (generation) = SDNA spiral.

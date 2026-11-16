@@ -4,13 +4,15 @@ Heaven runner backend for SDNA — bridges into Heaven's hermes_step.
 ADAPTOR: Converts SDNA HermesConfig → Heaven HermesConfig + HeavenAgentConfig.
 Heaven handles all key resolution, agent creation, execution internally.
 
-Two Heaven objects are built:
+Three things are built:
 1. HeavenAgentConfig — WHO does it (system_prompt, model, provider, tools, mcp_servers)
-2. Heaven HermesConfig — WHAT to do (goal, iterations, agent reference)
+2. Heaven HermesConfig — WHAT to do (goal, iterations = max_turns, agent reference)
+3. agent_constructor_kwargs — BaseHeavenAgent constructor arguments (use_uni_api, max_tool_calls)
 
 Fields are sourced from:
 - SDNA HermesConfig (name, system_prompt, model, mcp_servers, goal, max_turns)
-- HeavenInputs.agent (provider, temperature, max_tokens, thinking_budget, heaven_tools, extra_model_kwargs)
+- HeavenInputs.agent (provider, temperature, max_tokens, thinking_budget, tools, extra_model_kwargs,
+  use_uni_api, max_tool_calls, extra_agent_kwargs)
 - HeavenInputs.hermes (history_id, return_summary, ai_messages_only, continuation, etc.)
 """
 
@@ -227,6 +229,8 @@ async def heaven_agent_step(
     agent_args = config.heaven_inputs.agent if config.heaven_inputs else HeavenAgentArgs()
     constructor_kwargs = dict(agent_constructor_kwargs or {})
     constructor_kwargs.setdefault("use_uni_api", agent_args.use_uni_api)
+    if agent_args.max_tool_calls is not None:
+        constructor_kwargs.setdefault("max_tool_calls", agent_args.max_tool_calls)
 
     try:
         result = await hermes_step(
