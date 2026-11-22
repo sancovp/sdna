@@ -111,12 +111,16 @@ reports every procedure as unverified rather than claiming a clean sweep.
 
 ## 5. The join to the rest of the ecosystem
 
+> **WARNING: STATE MENTIONED IN DESIGN.MD -- NOT ALLOWED IN DESIGN. THIS MUST MOVE TO STATE FILE WHEN WORKED ON. DO NOT REMOVE THIS FENCE UNTIL THE STATE IS RECONCILED AND EVERY INTENDED THING IS BUILT AS INTENDED. DO NOT SKIP THIS.**
+
 `Procedure.code_pointer` returns `sdk.<site>.<action>` — **exactly the shape
 `AutomationSchema.code_pointer` already imports and calls**
 (`domain/automation.py::get_code_callable`).
 
 A compiled procedure is therefore schedulable the moment it exists, with zero
 new plumbing:
+
+> **END OF STATE FENCE**
 
 ```json
 {"name": "list_weekly_batch",
@@ -135,13 +139,21 @@ And the immune sweep is itself a `CronAutomation`, following the established
  "code_pointer": "selfbot.application.immune.fire_replay_sweep"}
 ```
 
+> **WARNING: STATE MENTIONED IN DESIGN.MD -- NOT ALLOWED IN DESIGN. THIS MUST MOVE TO STATE FILE WHEN WORKED ON. DO NOT REMOVE THIS FENCE UNTIL THE STATE IS RECONCILED AND EVERY INTENDED THING IS BUILT AS INTENDED. DO NOT SKIP THIS.**
+
 **The scheduler selfbot already had is what keeps the SDK true.** That is not a
 coincidence — it is why selfbot has a scheduler.
 
+> **END OF STATE FENCE**
+
 ## 6. Layers
+
+> **WARNING: STATE MENTIONED IN DESIGN.MD -- NOT ALLOWED IN DESIGN. THIS MUST MOVE TO STATE FILE WHEN WORKED ON. DO NOT REMOVE THIS FENCE UNTIL THE STATE IS RECONCILED AND EVERY INTENDED THING IS BUILT AS INTENDED. DO NOT SKIP THIS.**
 
 Onion architecture, unchanged from the original selfbot: domain says WHAT,
 infrastructure says HOW, application orchestrates, factory wires.
+
+> **END OF STATE FENCE**
 
 | module | layer | what it is for |
 |---|---|---|
@@ -198,13 +210,19 @@ when a site breaks, and machinery that lives in one place gets fixed once.
 `/tmp/heaven_data/skills/use-computer/resources/selfbot` is a **deploy target**,
 never edited by hand.
 
+> **WARNING: STATE MENTIONED IN DESIGN.MD -- NOT ALLOWED IN DESIGN. THIS MUST MOVE TO STATE FILE WHEN WORKED ON. DO NOT REMOVE THIS FENCE UNTIL THE STATE IS RECONCILED AND EVERY INTENDED THING IS BUILT AS INTENDED. DO NOT SKIP THIS.**
+
 The package previously existed *only* in that container — untracked, ungitted,
 invisible to every session, one `docker prune` from gone. It was ported here
 whole (law 0: the monorepo is the only canonical home), `SKILL.md` and
 `scripts/computer.sh` included, since the skill and the library are one
 artifact.
 
+> **END OF STATE FENCE**
+
 ### Why it lives inside sdna, and why it is not called `selfbot`
+
+> **WARNING: STATE MENTIONED IN DESIGN.MD -- NOT ALLOWED IN DESIGN. THIS MUST MOVE TO STATE FILE WHEN WORKED ON. DO NOT REMOVE THIS FENCE UNTIL THE STATE IS RECONCILED AND EVERY INTENDED THING IS BUILT AS INTENDED. DO NOT SKIP THIS.**
 
 **`sdna.selfbot` already exists and is a different thing.** It is 183 lines of
 agent self-prompting via `tmux send-keys` — `SelfBot.prompt(text, session=...)`,
@@ -215,10 +233,16 @@ isolated Xvfb screens and compiles site procedures into SDKs.
 They are homonyms, not versions. Hence `selfbot_extensions` (Isaac's naming,
 2026-08-10).
 
+> **END OF STATE FENCE**
+
+> **WARNING: STATE MENTIONED IN DESIGN.MD -- NOT ALLOWED IN DESIGN. THIS MUST MOVE TO STATE FILE WHEN WORKED ON. DO NOT REMOVE THIS FENCE UNTIL THE STATE IS RECONCILED AND EVERY INTENDED THING IS BUILT AS INTENDED. DO NOT SKIP THIS.**
+
 It lives *inside* sdna because that is where the automation family already is
 (`sdna/cron.py`, `sdna/selfbot.py`, `Heartbeat`), and because this package
 already imported `sdna.context_engineering` — as a sibling that was a
 cross-package dependency; as a subpackage it is an ordinary internal import.
+
+> **END OF STATE FENCE**
 
 **The packaging cost is paid by extras, not by sdna's users.** `jinja2`,
 `pillow` and `playwright` are declared under `[selfbot]` / `[browser]`, so a
@@ -230,10 +254,16 @@ pip install sanctuary-dna[selfbot]     # + codegen and virtual screens
 pip install sanctuary-dna[browser]     # + Playwright driving
 ```
 
+> **WARNING: STATE MENTIONED IN DESIGN.MD -- NOT ALLOWED IN DESIGN. THIS MUST MOVE TO STATE FILE WHEN WORKED ON. DO NOT REMOVE THIS FENCE UNTIL THE STATE IS RECONCILED AND EVERY INTENDED THING IS BUILT AS INTENDED. DO NOT SKIP THIS.**
+
 ⚠ `sdna` has no `DESIGN.md`. Rule 26 wants one canonical design per PROJECT,
 which would make this file a *section* of sdna's. Writing sdna's design is
 architecture and is Isaac's; until it exists this file stands alone and rolls
 up when it does.
+
+> **END OF STATE FENCE**
+
+> **WARNING: STATE MENTIONED IN DESIGN.MD -- NOT ALLOWED IN DESIGN. THIS MUST MOVE TO STATE FILE WHEN WORKED ON. DO NOT REMOVE THIS FENCE UNTIL THE STATE IS RECONCILED AND EVERY INTENDED THING IS BUILT AS INTENDED. DO NOT SKIP THIS.**
 
 ## 10. Status
 
@@ -268,3 +298,5 @@ code *executing* is proven in CI).
   `selfbot.cli`.
 - **Carton projection** — golden procedures as graph concepts, so procedure
   knowledge is queryable rather than only importable.
+
+> **END OF STATE FENCE**
