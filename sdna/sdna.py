@@ -274,10 +274,11 @@ class SDNAFlowchain(EvalChain):
         feedback_key: str = "ovp_feedback",
     ):
         # EvalChain wants (chain_name, links, evaluator, max_cycles, approval_key)
-        # flow can be None when subclass overrides _run_flow (e.g. DUOChain)
+        # flow can be None when subclass overrides _run_flow (e.g. DUOChain), and any object with
+        # `async execute(ctx)` is a flow: only an SDNAFlow carries its units as `sdnacs`
         super().__init__(
             chain_name=name,
-            links=flow.sdnacs if flow is not None else [],
+            links=list(getattr(flow, "sdnacs", None) or []),
             evaluator=ovp,
             max_cycles=max_cycles,
             approval_key=approval_key,
